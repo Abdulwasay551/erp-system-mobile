@@ -52,7 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
             child: CircleAvatar(
               radius: 16,
-              child: Text(auth.user?.initials ?? '?', style: const TextStyle(fontSize: 12)),
+              backgroundColor: const Color(0xFF171717),
+              foregroundColor: Colors.white,
+              child: Text(auth.user?.initials ?? '?', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           ),
           const SizedBox(width: 12),
