@@ -1,18 +1,12 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Android emulators can't reach the host machine via localhost/127.0.0.1 -
-/// 10.0.2.2 is the emulator's alias for the host loopback. Real devices would
-/// need the host's actual LAN IP instead (not handled here - emulator/web/
-/// desktop only, matching what's available to develop against right now).
-String get _apiBaseUrl {
-  if (kIsWeb) return 'http://127.0.0.1:8000';
-  if (Platform.isAndroid) return 'http://10.0.2.2:8000';
-  return 'http://127.0.0.1:8000';
-}
+/// Points at the deployed backend so this build works for real testers on
+/// real devices, not just the local dev emulator. For local development
+/// against a Django dev server instead, swap this back to the emulator/host
+/// addresses (10.0.2.2 for Android emulator, 127.0.0.1 for web/desktop).
+String get _apiBaseUrl => 'https://erp-system-seven-eosin.vercel.app';
 
 class ApiException implements Exception {
   final int statusCode;
