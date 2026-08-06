@@ -45,5 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Used to scan product barcodes and IMEI stickers at checkout.</string>
 </dict>
 </plist>

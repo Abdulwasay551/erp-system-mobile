@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import 'barcode_scanner_screen.dart';
 
 class _CartLine {
   final String key;
@@ -91,6 +92,16 @@ class _POSScreenState extends State<POSScreen> {
     } finally {
       if (mounted) setState(() => _searching = false);
     }
+  }
+
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+    );
+    if (code == null || code.isEmpty) return;
+    _searchController.text = code;
+    await _search();
   }
 
   void _addToCart(Map<String, dynamic> item) {
@@ -198,6 +209,12 @@ class _POSScreenState extends State<POSScreen> {
                 ),
                 onSubmitted: (_) => _search(),
               ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: _scanBarcode,
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(14)),
+              child: const Icon(Icons.qr_code_scanner),
             ),
             const SizedBox(width: 8),
             FilledButton(
