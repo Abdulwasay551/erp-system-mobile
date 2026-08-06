@@ -148,12 +148,16 @@ class _POSScreenState extends State<POSScreen> {
     }
   }
 
-  Future<void> _openInvoicePdf() async {
+  Future<void> _openInvoicePdf(String size) async {
     final invoiceId = _lastInvoice?['invoice_id'];
     if (invoiceId == null) return;
     setState(() => _openingPdf = true);
     try {
-      await downloadAndOpenPdf(_api, '/api/sales/invoices/$invoiceId/pdf/', 'invoice-$invoiceId.pdf');
+      await downloadAndOpenPdf(
+        _api,
+        '/api/sales/invoices/$invoiceId/pdf/?size=$size',
+        'invoice-$invoiceId-$size.pdf',
+      );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
@@ -320,12 +324,22 @@ class _POSScreenState extends State<POSScreen> {
                   Text('Total: Rs. ${_lastInvoice!['total']}'),
                   Text('Outstanding: Rs. ${_lastInvoice!['outstanding_amount']}'),
                   const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: _openingPdf ? null : _openInvoicePdf,
-                    icon: _openingPdf
-                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.picture_as_pdf),
-                    label: Text(_openingPdf ? 'Opening...' : 'Open PDF'),
+                  PopupMenuButton<String>(
+                    enabled: !_openingPdf,
+                    onSelected: _openInvoicePdf,
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'mini', child: Text('Mini receipt (billing machine)')),
+                      PopupMenuItem(value: 'a4', child: Text('A4 invoice (printer)')),
+                    ],
+                    child: IgnorePointer(
+                      child: TextButton.icon(
+                        onPressed: () {},
+                        icon: _openingPdf
+                            ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.picture_as_pdf),
+                        label: Text(_openingPdf ? 'Opening...' : 'Open PDF'),
+                      ),
+                    ),
                   ),
                 ],
               ),
