@@ -131,8 +131,18 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('This Month'),
-                            Text('Rs. ${_summary!['grand_total']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                            Text(
+                              'This Month',
+                              style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                            ),
+                            Text(
+                              'Rs. ${_summary!['grand_total']}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
                           ],
                         ),
                       ),
