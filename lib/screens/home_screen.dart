@@ -6,6 +6,9 @@ import 'pos_screen.dart';
 import 'receiving_screen.dart';
 import 'contacts_screen.dart';
 import 'expenses_screen.dart';
+import 'accounting_screen.dart';
+
+const _adminRoles = {'Owner', 'Manager'};
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,8 +20,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
-  static const _titles = ['Dashboard', 'POS / Sell', 'Receiving', 'Contacts', 'Expenses'];
-  static const _screens = [
+  static const _baseTitles = ['Dashboard', 'POS / Sell', 'Receiving', 'Contacts', 'Expenses'];
+  static const _baseScreens = [
     DashboardScreen(),
     POSScreen(),
     ReceivingScreen(),
@@ -29,9 +32,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
+    final isAdmin = _adminRoles.contains(auth.user?.roleName);
+    final titles = isAdmin ? [..._baseTitles, 'Accounting'] : _baseTitles;
+    final screens = isAdmin ? [..._baseScreens, const AccountingScreen()] : _baseScreens;
+    if (_index >= titles.length) _index = 0;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_index]),
+        title: Text(titles[_index]),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -60,16 +67,18 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 12),
         ],
       ),
-      body: IndexedStack(index: _index, children: _screens),
+      body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.point_of_sale_outlined), selectedIcon: Icon(Icons.point_of_sale), label: 'POS'),
-          NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Receiving'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Expenses'),
+        destinations: [
+          const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
+          const NavigationDestination(icon: Icon(Icons.point_of_sale_outlined), selectedIcon: Icon(Icons.point_of_sale), label: 'POS'),
+          const NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Receiving'),
+          const NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
+          const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Expenses'),
+          if (isAdmin)
+            const NavigationDestination(icon: Icon(Icons.account_balance_outlined), selectedIcon: Icon(Icons.account_balance), label: 'Accounting'),
         ],
       ),
     );
