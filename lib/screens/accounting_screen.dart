@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../widgets/skeleton.dart';
 import 'expenses_screen.dart';
+import 'staff_screen.dart';
 
 const _ink = Color(0xFF171717);
 
@@ -172,14 +173,16 @@ class _AccountingScreenState extends State<AccountingScreen> {
     final totals = _report?['totals'] as Map<String, dynamic>?;
     final days = _report?['days'] as List<dynamic>? ?? [];
     return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Accounting'),
-          bottom: const TabBar(tabs: [Tab(text: 'Profit & Loss'), Tab(text: 'Expenses')]),
-        ),
-        body: TabBarView(
-          children: [
+      length: 3,
+      child: Column(
+        children: [
+          Material(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: const TabBar(tabs: [Tab(text: 'Profit & Loss'), Tab(text: 'Expenses'), Tab(text: 'Staff')]),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
             RefreshIndicator(
               onRefresh: _load,
               child: _error != null
@@ -239,9 +242,12 @@ class _AccountingScreenState extends State<AccountingScreen> {
                       ],
                     ),
             ),
-            const ExpensesScreen(),
-          ],
-        ),
+                const ExpensesScreen(),
+                const StaffScreen(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

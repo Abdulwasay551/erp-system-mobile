@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import 'contact_form_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -38,8 +39,8 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
           child: TabBarView(
             controller: _tabController,
             children: const [
-              _ContactList(kind: _ContactKind.customer),
-              _ContactList(kind: _ContactKind.supplier),
+              _ContactList(kind: ContactKind.customer),
+              _ContactList(kind: ContactKind.supplier),
             ],
           ),
         ),
@@ -48,10 +49,8 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
   }
 }
 
-enum _ContactKind { customer, supplier }
-
 class _ContactList extends StatefulWidget {
-  final _ContactKind kind;
+  final ContactKind kind;
   const _ContactList({required this.kind});
 
   @override
@@ -63,7 +62,7 @@ class _ContactListState extends State<_ContactList> {
   List<dynamic> _items = [];
   bool _loading = true;
 
-  String get _endpoint => widget.kind == _ContactKind.customer ? '/api/crm/customers/' : '/api/purchase/suppliers/';
+  String get _endpoint => widget.kind == ContactKind.customer ? '/api/crm/customers/' : '/api/purchase/suppliers/';
   ApiClient get _api => context.read<AuthService>().api;
 
   @override
@@ -85,52 +84,12 @@ class _ContactListState extends State<_ContactList> {
     }
   }
 
-  Future<void> _openAddDialog() async {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
-    final extraController = TextEditingController(); // CNIC for customer, city for supplier
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.kind == _ContactKind.customer ? 'Add Customer' : 'Add Vendor'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone (optional)')),
-            TextField(
-              controller: extraController,
-              decoration: InputDecoration(
-                labelText: widget.kind == _ContactKind.customer ? 'CNIC (optional)' : 'City (optional)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-        ],
-      ),
+  Future<void> _openForm([Map<String, dynamic>? existing]) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => ContactFormScreen(kind: widget.kind, existing: existing)),
     );
-    if (saved != true) return;
-    if (nameController.text.trim().isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name is required.')));
-      return;
-    }
-    try {
-      final body = widget.kind == _ContactKind.customer
-          ? {'name': nameController.text, 'phone': phoneController.text, 'cnic': extraController.text}
-          : {'name': nameController.text, 'phone': phoneController.text, 'city': extraController.text};
-      await _api.request(_endpoint, method: 'POST', body: body);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.kind == _ContactKind.customer ? 'Customer added.' : 'Vendor added.')),
-        );
-      }
-      _load(_searchController.text);
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
+    if (saved == true) _load(_searchController.text);
   }
 
   Future<void> _openDetail(Map<String, dynamic> item) async {
@@ -159,17 +118,15 @@ class _ContactListState extends State<_ContactList> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  if (outstanding > 0) ...[
-                    FilledButton.icon(
-                      icon: const Icon(Icons.payments_outlined),
-                      label: const Text('Record Payment'),
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await _recordPayment(item, outstanding);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                  ],
+                  FilledButton.icon(
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Record Payment'),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _recordPayment(item, outstanding);
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.picture_as_pdf_outlined),
                     label: const Text('Ledger PDF'),
@@ -216,8 +173,9 @@ class _ContactListState extends State<_ContactList> {
   }
 
   Future<void> _recordPayment(Map<String, dynamic> item, double outstanding) async {
-    final amountController = TextEditingController(text: outstanding.toStringAsFixed(2));
-    var paymentType = 'full'; // 'full' or 'partial'
+    final hasOutstanding = outstanding > 0;
+    final amountController = TextEditingController(text: hasOutstanding ? outstanding.toStringAsFixed(2) : '');
+    var paymentType = hasOutstanding ? 'full' : 'partial'; // 'full' or 'partial'
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -259,8 +217,8 @@ class _ContactListState extends State<_ContactList> {
     );
     if (confirmed != true) return;
     try {
-      final endpoint = widget.kind == _ContactKind.customer ? '/api/sales/payments/' : '/api/purchase/purchase-payments/';
-      final body = widget.kind == _ContactKind.customer
+      final endpoint = widget.kind == ContactKind.customer ? '/api/sales/payments/' : '/api/purchase/purchase-payments/';
+      final body = widget.kind == ContactKind.customer
           ? {
               'customer': item['id'],
               'amount': amountController.text,
@@ -287,7 +245,7 @@ class _ContactListState extends State<_ContactList> {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
-        onPressed: _openAddDialog,
+        onPressed: () => _openForm(),
         child: const Icon(Icons.add),
       ),
       body: Column(
@@ -319,10 +277,21 @@ class _ContactListState extends State<_ContactList> {
                             return ListTile(
                               title: Text(item['name'] as String? ?? ''),
                               subtitle: Text(item['phone']?.toString() ?? ''),
-                              trailing: outstanding > 0
-                                  ? Text('Rs. ${outstanding.toStringAsFixed(0)}',
-                                      style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600))
-                                  : null,
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (outstanding > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: Text('Rs. ${outstanding.toStringAsFixed(0)}',
+                                          style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600)),
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, size: 18),
+                                    onPressed: () => _openForm(item),
+                                  ),
+                                ],
+                              ),
                               onTap: () => _openDetail(item),
                             );
                           },

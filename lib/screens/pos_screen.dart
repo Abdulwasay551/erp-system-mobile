@@ -53,6 +53,7 @@ class _POSScreenState extends State<POSScreen> {
   String _paymentMethod = 'cash';
   Map<String, dynamic>? _lastInvoice;
   bool _openingPdf = false;
+  final _discountController = TextEditingController();
 
   Future<void> _searchCustomers(String q) async {
     if (q.trim().isEmpty) {
@@ -67,7 +68,13 @@ class _POSScreenState extends State<POSScreen> {
 
   ApiClient get _api => context.read<AuthService>().api;
 
-  double get _cartTotal => _cart.fold(0, (sum, l) => sum + l.unitPrice * l.quantity);
+  double get _cartSubtotal => _cart.fold(0, (sum, l) => sum + l.unitPrice * l.quantity);
+  double get _discountAmount {
+    final v = double.tryParse(_discountController.text) ?? 0;
+    return v.clamp(0, _cartSubtotal).toDouble();
+  }
+
+  double get _cartTotal => _cartSubtotal - _discountAmount;
 
   Future<void> _search() async {
     final q = _searchController.text.trim();
@@ -127,6 +134,7 @@ class _POSScreenState extends State<POSScreen> {
                   'unit_price': l.unitPrice,
                 })
             .toList(),
+        if (_discountAmount > 0) 'discount_amount': _discountAmount,
         'payment': {'method': _paymentMethod, 'amount': _cartTotal},
       };
       final result = await _api.request('/api/sales/pos/checkout/', method: 'POST', body: payload);
@@ -136,6 +144,7 @@ class _POSScreenState extends State<POSScreen> {
         _selectedCustomer = null;
         _customerSearchController.clear();
         _customerResults = [];
+        _discountController.clear();
       });
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -169,6 +178,7 @@ class _POSScreenState extends State<POSScreen> {
   void dispose() {
     _searchController.dispose();
     _customerSearchController.dispose();
+    _discountController.dispose();
     super.dispose();
   }
 
@@ -280,6 +290,23 @@ class _POSScreenState extends State<POSScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Subtotal', style: TextStyle(color: Colors.grey.shade600)),
+                    Text('Rs. ${_cartSubtotal.toStringAsFixed(2)}', style: TextStyle(color: Colors.grey.shade600)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _discountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(labelText: 'Discount', hintText: '0.00', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

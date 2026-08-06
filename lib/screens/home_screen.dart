@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import 'dashboard_screen.dart';
-import 'pos_screen.dart';
+import 'sales_screen.dart';
 import 'receiving_screen.dart';
 import 'contacts_screen.dart';
 import 'expenses_screen.dart';
 import 'accounting_screen.dart';
+import 'search_screen.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -20,7 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
-  static const _baseTitles = ['Dashboard', 'POS / Sell', 'Receiving', 'Contacts', 'Expenses'];
+  static const _baseTitles = ['Dashboard', 'Sales', 'Receiving', 'Contacts', 'Expenses'];
 
   void _goToTab(int i) => setState(() => _index = i);
 
@@ -31,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final titles = isAdmin ? [..._baseTitles, 'Accounting'] : _baseTitles;
     final screens = [
       DashboardScreen(onNavigate: _goToTab),
-      const POSScreen(),
+      const SalesScreen(),
       const ReceivingScreen(),
       const ContactsScreen(),
       const ExpensesScreen(),
@@ -42,6 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(titles[_index]),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SearchScreen())),
+          ),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'logout') {
@@ -75,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: [
           const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-          const NavigationDestination(icon: Icon(Icons.point_of_sale_outlined), selectedIcon: Icon(Icons.point_of_sale), label: 'POS'),
+          const NavigationDestination(icon: Icon(Icons.point_of_sale_outlined), selectedIcon: Icon(Icons.point_of_sale), label: 'Sales'),
           const NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Receiving'),
           const NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
           const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Expenses'),
