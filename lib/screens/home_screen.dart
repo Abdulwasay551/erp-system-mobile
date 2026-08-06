@@ -21,20 +21,22 @@ class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
   static const _baseTitles = ['Dashboard', 'POS / Sell', 'Receiving', 'Contacts', 'Expenses'];
-  static const _baseScreens = [
-    DashboardScreen(),
-    POSScreen(),
-    ReceivingScreen(),
-    ContactsScreen(),
-    ExpensesScreen(),
-  ];
+
+  void _goToTab(int i) => setState(() => _index = i);
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
-    final isAdmin = _adminRoles.contains(auth.user?.roleName);
+    final isAdmin = _adminRoles.contains(auth.user?.roleName) || auth.user?.isSuperuser == true;
     final titles = isAdmin ? [..._baseTitles, 'Accounting'] : _baseTitles;
-    final screens = isAdmin ? [..._baseScreens, const AccountingScreen()] : _baseScreens;
+    final screens = [
+      DashboardScreen(onNavigate: _goToTab),
+      const POSScreen(),
+      const ReceivingScreen(),
+      const ContactsScreen(),
+      const ExpensesScreen(),
+      if (isAdmin) const AccountingScreen(),
+    ];
     if (_index >= titles.length) _index = 0;
     return Scaffold(
       appBar: AppBar(

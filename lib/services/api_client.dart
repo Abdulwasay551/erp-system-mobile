@@ -112,4 +112,26 @@ class ApiClient {
 
     return data;
   }
+
+  /// Fetches a binary (PDF) endpoint with the auth header attached - separate from
+  /// [request] since responses here aren't JSON and shouldn't be decoded as such.
+  Future<List<int>> requestBytes(String path) async {
+    Future<http.Response> doRequest(String? token) {
+      final uri = Uri.parse('$_apiBaseUrl$path');
+      return http.get(uri, headers: {if (token != null) 'Authorization': 'Bearer $token'});
+    }
+
+    var token = await getAccessToken();
+    var res = await doRequest(token);
+
+    if (res.statusCode == 401) {
+      token = await _refreshAccessToken();
+      if (token != null) res = await doRequest(token);
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(res.statusCode, 'Failed to generate PDF (${res.statusCode}).');
+    }
+    return res.bodyBytes;
+  }
 }

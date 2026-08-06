@@ -7,6 +7,7 @@ class CurrentUser {
   final String firstName;
   final String lastName;
   final String roleName;
+  final bool isSuperuser;
 
   CurrentUser({
     required this.id,
@@ -14,6 +15,7 @@ class CurrentUser {
     required this.firstName,
     required this.lastName,
     required this.roleName,
+    required this.isSuperuser,
   });
 
   factory CurrentUser.fromJson(Map<String, dynamic> json) => CurrentUser(
@@ -22,6 +24,7 @@ class CurrentUser {
         firstName: (json['first_name'] as String?) ?? '',
         lastName: (json['last_name'] as String?) ?? '',
         roleName: (json['role_name'] as String?) ?? '',
+        isSuperuser: (json['is_superuser'] as bool?) ?? false,
       );
 
   String get fullName => '$firstName $lastName'.trim();

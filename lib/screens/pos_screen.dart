@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/pdf_helper.dart';
 
 class _CartLine {
   final String key;
@@ -52,6 +52,7 @@ class _POSScreenState extends State<POSScreen> {
   bool _checkingOut = false;
   String _paymentMethod = 'cash';
   Map<String, dynamic>? _lastInvoice;
+  bool _openingPdf = false;
 
   Future<void> _searchCustomers(String q) async {
     if (q.trim().isEmpty) {
@@ -144,6 +145,19 @@ class _POSScreenState extends State<POSScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _checkingOut = false);
+    }
+  }
+
+  Future<void> _openInvoicePdf() async {
+    final invoiceId = _lastInvoice?['invoice_id'];
+    if (invoiceId == null) return;
+    setState(() => _openingPdf = true);
+    try {
+      await downloadAndOpenPdf(_api, '/api/sales/invoices/$invoiceId/pdf/', 'invoice-$invoiceId.pdf');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _openingPdf = false);
     }
   }
 
@@ -305,20 +319,14 @@ class _POSScreenState extends State<POSScreen> {
                   Text('Invoice: ${_lastInvoice!['invoice_number']}'),
                   Text('Total: Rs. ${_lastInvoice!['total']}'),
                   Text('Outstanding: Rs. ${_lastInvoice!['outstanding_amount']}'),
-                  if (_lastInvoice!['pdf_url'] != null) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () {
-                        final pdfPath = _lastInvoice!['pdf_url'] as String;
-                        final url = pdfPath.startsWith('http')
-                            ? Uri.parse(pdfPath)
-                            : Uri.parse('${_api.baseUrl}$pdfPath');
-                        launchUrl(url, mode: LaunchMode.externalApplication);
-                      },
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: const Text('Open PDF'),
-                    ),
-                  ],
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _openingPdf ? null : _openInvoicePdf,
+                    icon: _openingPdf
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.picture_as_pdf),
+                    label: Text(_openingPdf ? 'Opening...' : 'Open PDF'),
+                  ),
                 ],
               ),
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/pdf_helper.dart';
 
 class ReceivingScreen extends StatefulWidget {
   const ReceivingScreen({super.key});
@@ -73,7 +74,28 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
                         child: ListTile(
                           title: Text('${bill['bill_number']} · ${bill['supplier_name']}'),
                           subtitle: Text('Rs. ${bill['total_amount']}'),
-                          trailing: FilledButton(onPressed: () => _openReceive(bill), child: const Text('Receive')),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.print_outlined),
+                                tooltip: 'Print',
+                                onPressed: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  try {
+                                    await downloadAndOpenPdf(
+                                      _api,
+                                      '/api/purchase/bills/${bill['id']}/pdf/',
+                                      '${bill['bill_number']}-receiving.pdf',
+                                    );
+                                  } catch (e) {
+                                    if (mounted) messenger.showSnackBar(SnackBar(content: Text('$e')));
+                                  }
+                                },
+                              ),
+                              FilledButton(onPressed: () => _openReceive(bill), child: const Text('Receive')),
+                            ],
+                          ),
                         ),
                       );
                     },

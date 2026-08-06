@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/pdf_helper.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -156,15 +157,33 @@ class _ContactListState extends State<_ContactList> {
               Text('Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
                   style: TextStyle(color: outstanding > 0 ? Colors.orange.shade800 : Colors.grey.shade600)),
               const SizedBox(height: 12),
-              if (outstanding > 0)
-                FilledButton.icon(
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Record Payment'),
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    await _recordPayment(item, outstanding);
-                  },
-                ),
+              Row(
+                children: [
+                  if (outstanding > 0) ...[
+                    FilledButton.icon(
+                      icon: const Icon(Icons.payments_outlined),
+                      label: const Text('Record Payment'),
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _recordPayment(item, outstanding);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Ledger PDF'),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await downloadAndOpenPdf(_api, '$_endpoint$id/ledger/pdf/', '$name-ledger.pdf');
+                      } catch (e) {
+                        if (mounted) messenger.showSnackBar(SnackBar(content: Text('$e')));
+                      }
+                    },
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               Text('Ledger', style: Theme.of(context).textTheme.titleSmall),
               Expanded(
