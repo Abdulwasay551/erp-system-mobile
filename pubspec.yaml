@@ -43,6 +43,7 @@ dependencies:
   open_file: ^3.5.11
   fl_chart: ^1.2.0
   mobile_scanner: ^7.4.0
+  flutter_animate: ^4.5.2
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +77,21 @@ flutter:
 
   assets:
     - assets/icon/app_icon.jpg
+
+  # Sora, bundled locally as a variable font rather than left on google_fonts'
+  # default runtime HTTP-fetch behavior - this app runs on a shop-counter device
+  # that can't depend on live internet the first time a screen renders.
+  fonts:
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora-Variable.ttf
+          weight: 400
+        - asset: assets/fonts/Sora-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/Sora-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/Sora-Variable.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

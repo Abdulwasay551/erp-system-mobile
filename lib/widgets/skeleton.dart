@@ -28,6 +28,7 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -35,7 +36,9 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
           width: widget.width,
           height: widget.height,
           decoration: BoxDecoration(
-            color: Color.lerp(Colors.grey.shade200, Colors.grey.shade300, _controller.value),
+            // surfaceContainerHighest/outline instead of hardcoded grey shades - the
+            // old literals were invisible-to-wrong on a dark background.
+            color: Color.lerp(scheme.surfaceContainerHighest, scheme.outline, _controller.value),
             borderRadius: widget.borderRadius ?? BorderRadius.circular(6),
           ),
         );
