@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../widgets/gradient_fab.dart';
 
 class ReceivingScreen extends StatefulWidget {
   const ReceivingScreen({super.key});
@@ -54,10 +55,10 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         onPressed: _openNewInvoice,
-        icon: const Icon(Icons.add),
-        label: const Text('New Invoice'),
+        label: 'New Invoice',
+        child: const Icon(Icons.add),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

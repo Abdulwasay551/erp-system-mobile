@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../theme/app_semantic_colors.dart';
+import '../widgets/gradient_fab.dart';
 import 'contact_form_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -113,8 +115,14 @@ class _ContactListState extends State<_ContactList> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(name, style: Theme.of(context).textTheme.titleLarge),
-              Text('Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
-                  style: TextStyle(color: outstanding > 0 ? Colors.orange.shade800 : Colors.grey.shade600)),
+              Text(
+                'Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: outstanding > 0
+                      ? context.semanticColors.warning
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -159,7 +167,9 @@ class _ContactListState extends State<_ContactList> {
                             subtitle: Text(e['transaction_date']?.toString() ?? ''),
                             trailing: Text(
                               debit > 0 ? '+Rs. $debit' : '-Rs. $credit',
-                              style: TextStyle(color: debit > 0 ? Colors.red.shade700 : Colors.green.shade700),
+                              style: TextStyle(
+                                color: debit > 0 ? context.semanticColors.danger : context.semanticColors.success,
+                              ),
                             ),
                           );
                         },
@@ -244,8 +254,9 @@ class _ContactListState extends State<_ContactList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: GradientFab(
         onPressed: () => _openForm(),
+        tooltip: 'Add contact',
         child: const Icon(Icons.add),
       ),
       body: Column(
@@ -283,8 +294,13 @@ class _ContactListState extends State<_ContactList> {
                                   if (outstanding > 0)
                                     Padding(
                                       padding: const EdgeInsets.only(right: 8),
-                                      child: Text('Rs. ${outstanding.toStringAsFixed(0)}',
-                                          style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600)),
+                                      child: Text(
+                                        'Rs. ${outstanding.toStringAsFixed(0)}',
+                                        style: TextStyle(
+                                          color: context.semanticColors.warning,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                     ),
                                   IconButton(
                                     icon: const Icon(Icons.edit_outlined, size: 18),
