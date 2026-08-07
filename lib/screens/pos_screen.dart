@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../widgets/gradient_button.dart';
 import 'barcode_scanner_screen.dart';
 
 class _CartLine {
@@ -244,7 +245,7 @@ class _POSScreenState extends State<POSScreen> {
         Text('Cart', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         if (_cart.isEmpty)
-          const Text('No items yet - search above to add.', style: TextStyle(color: Colors.grey))
+          Text('No items yet - search above to add.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))
         else
           Card(
             child: Column(
@@ -310,8 +311,8 @@ class _POSScreenState extends State<POSScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Subtotal', style: TextStyle(color: Colors.grey.shade600)),
-                    Text('Rs. ${_cartSubtotal.toStringAsFixed(2)}', style: TextStyle(color: Colors.grey.shade600)),
+                    Text('Subtotal', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    Text('Rs. ${_cartSubtotal.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -342,12 +343,14 @@ class _POSScreenState extends State<POSScreen> {
                   onChanged: (v) => setState(() => _paymentMethod = v ?? 'cash'),
                 ),
                 const SizedBox(height: 16),
-                FilledButton(
+                GradientButton(
                   onPressed: _checkingOut ? null : _checkout,
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                   child: _checkingOut
-                      ? const SizedBox(
-                          height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
+                        )
                       : const Text('Complete Sale'),
                 ),
               ],

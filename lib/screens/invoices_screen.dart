@@ -3,17 +3,8 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
-
-const _ink = Color(0xFF171717);
-
-const _statusColors = {
-  'paid': Color(0xFF15803D),
-  'partially_paid': Color(0xFFB45309),
-  'draft': Color(0xFF6B7280),
-  'sent': Color(0xFF6B7280),
-  'overdue': Color(0xFFB91C1C),
-  'cancelled': Color(0xFFB91C1C),
-};
+import '../theme/app_semantic_colors.dart';
+import '../widgets/tag_pill.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -92,6 +83,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                             final inv = _filtered[i] as Map<String, dynamic>;
                             final outstanding = double.tryParse(inv['outstanding_amount'].toString()) ?? 0;
                             final status = inv['status'] as String;
+                            final (statusColor, _) = context.semanticColors.statusColor(status);
                             return Card(
                               child: ListTile(
                                 title: Text(inv['invoice_number'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -101,10 +93,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text('Rs. ${inv['total']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    Text(
-                                      status,
-                                      style: TextStyle(fontSize: 11, color: _statusColors[status] ?? Colors.grey.shade600),
-                                    ),
+                                    const SizedBox(height: 4),
+                                    TagPill(label: status, color: statusColor),
                                   ],
                                 ),
                                 onTap: () => _openDetail(inv, outstanding),
@@ -221,7 +211,7 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(inv['invoice_number'] as String, style: Theme.of(context).textTheme.titleLarge),
-          Text(inv['customer_name'] as String, style: TextStyle(color: Colors.grey.shade600)),
+          Text(inv['customer_name'] as String, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           _row('Date', inv['invoice_date'].toString()),
           _row('Total', 'Rs. ${inv['total']}'),
@@ -286,13 +276,14 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
   }
 
   Widget _row(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, color: _ink)),
+          Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSurface)),
         ],
       ),
     );
