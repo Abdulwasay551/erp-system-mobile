@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-const _ink = Color(0xFF171717);
-
 /// Branded loading indicator - a pulsing app logo instead of a generic spinner, used
 /// on the screens that feel most like "home base" (Dashboard, Accounting).
 class LogoLoader extends StatefulWidget {
@@ -29,6 +27,7 @@ class _LogoLoaderState extends State<LogoLoader> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -40,12 +39,18 @@ class _LogoLoaderState extends State<LogoLoader> with SingleTickerProviderStateM
               return Stack(
                 alignment: Alignment.center,
                 children: [
+                  // Soft radial glow instead of a flat alpha-pulsed circle.
                   Container(
-                    width: 72,
-                    height: 72,
+                    width: 96,
+                    height: 96,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _ink.withValues(alpha: 0.08 * (1 - _controller.value) + 0.04),
+                      gradient: RadialGradient(
+                        colors: [
+                          scheme.primary.withValues(alpha: 0.22 * (1 - _controller.value) + 0.10),
+                          scheme.primary.withValues(alpha: 0),
+                        ],
+                      ),
                     ),
                   ),
                   Transform.scale(scale: scale, child: child),
@@ -57,7 +62,7 @@ class _LogoLoaderState extends State<LogoLoader> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 16),
-          Text(widget.label, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+          Text(widget.label, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
         ],
       ),
     );

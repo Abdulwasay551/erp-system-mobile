@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../theme/app_semantic_colors.dart';
 import '../widgets/logo_loader.dart';
-
-const _ink = Color(0xFF171717);
 
 class DashboardScreen extends StatefulWidget {
   /// Switches the parent HomeScreen's bottom-nav tab - lets a stat card jump
@@ -13,6 +12,23 @@ class DashboardScreen extends StatefulWidget {
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _StatCardSpec {
+  final String label;
+  final String value;
+  final int tabIndex;
+  final IconData icon;
+  final bool isHero;
+  final bool isAlert;
+  const _StatCardSpec({
+    required this.label,
+    required this.value,
+    required this.tabIndex,
+    required this.icon,
+    this.isHero = false,
+    this.isAlert = false,
+  });
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
@@ -45,15 +61,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return const LogoLoader(label: 'Loading dashboard...');
     }
 
-    // (label, value, bottom-nav tab index to jump to on tap)
+    final customerOutstanding = double.tryParse(stats['customer_outstanding_total'].toString()) ?? 0;
+    final supplierOutstanding = double.tryParse(stats['supplier_outstanding_total'].toString()) ?? 0;
+    final lowStock = double.tryParse(stats['low_stock_count'].toString()) ?? 0;
+    final pendingReceipts = double.tryParse(stats['pending_vendor_receipts'].toString()) ?? 0;
+
     final cards = [
-      ("Today's Sales", "Rs. ${stats['todays_sales_total']}", 1),
-      ("Sales Count Today", "${stats['todays_sales_count']}", 1),
-      ("Customer Outstanding", "Rs. ${stats['customer_outstanding_total']}", 3),
-      ("Supplier Outstanding", "Rs. ${stats['supplier_outstanding_total']}", 3),
-      ("Low Stock Items", "${stats['low_stock_count']}", 2),
-      ("Available Tracked Units", "${stats['available_tracked_units']}", 2),
-      ("Pending Vendor Receipts", "${stats['pending_vendor_receipts']}", 2),
+      _StatCardSpec(
+        label: "Today's Sales",
+        value: "Rs. ${stats['todays_sales_total']}",
+        tabIndex: 1,
+        icon: Icons.trending_up,
+        isHero: true,
+      ),
+      _StatCardSpec(
+        label: "Sales Count Today",
+        value: "${stats['todays_sales_count']}",
+        tabIndex: 1,
+        icon: Icons.receipt_long_outlined,
+      ),
+      _StatCardSpec(
+        label: "Customer Outstanding",
+        value: "Rs. ${stats['customer_outstanding_total']}",
+        tabIndex: 3,
+        icon: Icons.account_balance_wallet_outlined,
+        isAlert: customerOutstanding > 0,
+      ),
+      _StatCardSpec(
+        label: "Supplier Outstanding",
+        value: "Rs. ${stats['supplier_outstanding_total']}",
+        tabIndex: 3,
+        icon: Icons.local_shipping_outlined,
+        isAlert: supplierOutstanding > 0,
+      ),
+      _StatCardSpec(
+        label: "Low Stock Items",
+        value: "${stats['low_stock_count']}",
+        tabIndex: 2,
+        icon: Icons.inventory_2_outlined,
+        isAlert: lowStock > 0,
+      ),
+      _StatCardSpec(
+        label: "Available Tracked Units",
+        value: "${stats['available_tracked_units']}",
+        tabIndex: 2,
+        icon: Icons.qr_code_2,
+      ),
+      _StatCardSpec(
+        label: "Pending Vendor Receipts",
+        value: "${stats['pending_vendor_receipts']}",
+        tabIndex: 2,
+        icon: Icons.pending_actions_outlined,
+        isAlert: pendingReceipts > 0,
+      ),
     ];
 
     return RefreshIndicator(
@@ -64,16 +124,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisCount: 2,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.4,
+          childAspectRatio: 1.15,
         ),
         itemCount: cards.length,
         itemBuilder: (context, i) {
-          final (label, value, tabIndex) = cards[i];
+          final spec = cards[i];
           return _AnimatedStatCard(
             index: i,
-            label: label,
-            value: value,
-            onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(tabIndex),
+            spec: spec,
+            onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(spec.tabIndex),
           );
         },
       ),
@@ -83,10 +142,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _AnimatedStatCard extends StatefulWidget {
   final int index;
-  final String label;
-  final String value;
+  final _StatCardSpec spec;
   final VoidCallback? onTap;
-  const _AnimatedStatCard({required this.index, required this.label, required this.value, this.onTap});
+  const _AnimatedStatCard({required this.index, required this.spec, this.onTap});
 
   @override
   State<_AnimatedStatCard> createState() => _AnimatedStatCardState();
@@ -116,34 +174,129 @@ class _AnimatedStatCardState extends State<_AnimatedStatCard> with SingleTickerP
 
   @override
   Widget build(BuildContext context) {
+    final spec = widget.spec;
+    final scheme = Theme.of(context).colorScheme;
+    final semantic = context.semanticColors;
+
+    final (badgeBg, badgeFg) = spec.isAlert
+        ? (semantic.warningContainer, semantic.warning)
+        : (scheme.primaryContainer, scheme.onPrimaryContainer);
+
     return FadeTransition(
       opacity: _fade,
       child: SlideTransition(
         position: _slide,
-        child: Card(
-          child: InkWell(
-            onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: spec.isHero ? _heroCard(context, spec, scheme) : _flatCard(context, spec, badgeBg, badgeFg, scheme),
+      ),
+    );
+  }
+
+  Widget _flatCard(BuildContext context, _StatCardSpec spec, Color badgeBg, Color badgeFg, ColorScheme scheme) {
+    return Card(
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(widget.label, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                      ),
-                      if (widget.onTap != null)
-                        Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
-                    ],
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(8)),
+                    child: Icon(spec.icon, size: 16, color: badgeFg),
                   ),
-                  const SizedBox(height: 8),
-                  Text(widget.value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _ink)),
+                  if (widget.onTap != null)
+                    Icon(Icons.chevron_right, size: 16, color: scheme.onSurfaceVariant),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                spec.label,
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, height: 1.15),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                spec.value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroCard(BuildContext context, _StatCardSpec spec, ColorScheme scheme) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppGradients.primary(scheme),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: scheme.primary.withValues(alpha: 0.3), blurRadius: 14, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(spec.icon, size: 16, color: Colors.white),
+                    ),
+                    if (widget.onTap != null)
+                      const Icon(Icons.chevron_right, size: 16, color: Colors.white70),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  spec.label,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.15),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  spec.value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ),
