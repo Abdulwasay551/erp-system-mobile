@@ -48,6 +48,11 @@ class AuthService extends ChangeNotifier {
   String? get error => _error;
   bool get isAuthenticated => _user != null;
 
+  /// Owner/Manager gate for destructive actions (delete, recycle bin) - the backend
+  /// enforces the same check server-side (403 otherwise), this just controls whether
+  /// the UI offers the action at all.
+  bool get isAdmin => user?.roleName == 'Owner' || user?.roleName == 'Manager';
+
   AuthService() {
     _restoreSession();
   }

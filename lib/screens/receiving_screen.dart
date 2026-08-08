@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
 import '../widgets/gradient_fab.dart';
+import '../widgets/confirm_delete_dialog.dart';
 
 class ReceivingScreen extends StatefulWidget {
   const ReceivingScreen({super.key});
@@ -52,8 +53,21 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
     if (received == true) _load();
   }
 
+  Future<void> _deleteBill(Map<String, dynamic> bill) async {
+    final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
+    if (!confirmed) return;
+    try {
+      await _api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
       floatingActionButton: GradientFab(
         onPressed: _openNewInvoice,
@@ -94,6 +108,8 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
                                   }
                                 },
                               ),
+                              if (isAdmin) DeleteIconButton(onPressed: () => _deleteBill(bill)),
+                              const SizedBox(width: 4),
                               FilledButton(onPressed: () => _openReceive(bill), child: const Text('Receive')),
                             ],
                           ),
@@ -127,8 +143,8 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
   Future<void> _searchSuppliers(String q) async {
     if (q.trim().isEmpty) return;
     try {
-      final data = await _api.request('/api/purchase/suppliers/?search=${Uri.encodeComponent(q)}');
-      setState(() => _supplierResults = data as List<dynamic>);
+      final data = await _api.request('/api/purchase/suppliers/?search=${Uri.encodeComponent(q)}') as Map<String, dynamic>;
+      setState(() => _supplierResults = data['results'] as List<dynamic>);
     } catch (_) {}
   }
 
@@ -308,8 +324,9 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
 
   Future<void> _loadWarehouse() async {
     try {
-      final data = await _api.request('/api/inventory/warehouses/') as List<dynamic>;
-      if (data.isNotEmpty && mounted) setState(() => _warehouseId = data.first['id'] as int);
+      final data = await _api.request('/api/inventory/warehouses/') as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>;
+      if (results.isNotEmpty && mounted) setState(() => _warehouseId = results.first['id'] as int);
     } catch (_) {}
   }
 

@@ -63,8 +63,8 @@ class _POSScreenState extends State<POSScreen> {
       return;
     }
     try {
-      final data = await _api.request('/api/crm/customers/?search=${Uri.encodeComponent(q)}');
-      if (mounted) setState(() => _customerResults = data as List<dynamic>);
+      final data = await _api.request('/api/crm/customers/?search=${Uri.encodeComponent(q)}') as Map<String, dynamic>;
+      if (mounted) setState(() => _customerResults = data['results'] as List<dynamic>);
     } catch (_) {}
   }
 

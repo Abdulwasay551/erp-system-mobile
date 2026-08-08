@@ -5,7 +5,29 @@ import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_fab.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import 'contact_form_screen.dart';
+
+const _customerSortOptions = [
+  ('name', 'Name'),
+  ('-created_at', 'Newest'),
+  ('customer_code', 'Code'),
+];
+
+const _supplierSortOptions = [
+  ('partner__name', 'Name'),
+  ('-created_at', 'Newest'),
+  ('-overall_rating', 'Rating'),
+];
+
+const _supplierTypeOptions = [
+  (null, 'All types'),
+  ('distributor', 'Distributor'),
+  ('wholesaler', 'Wholesaler'),
+  ('manufacturer', 'Manufacturer'),
+  ('retailer', 'Retailer'),
+  ('other', 'Other'),
+];
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -63,8 +85,14 @@ class _ContactListState extends State<_ContactList> {
   final _searchController = TextEditingController();
   List<dynamic> _items = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _page = 1;
+  String? _supplierType;
+  late String _ordering = widget.kind == ContactKind.customer ? _customerSortOptions.first.$1 : _supplierSortOptions.first.$1;
 
   String get _endpoint => widget.kind == ContactKind.customer ? '/api/crm/customers/' : '/api/purchase/suppliers/';
+  bool get _isCustomer => widget.kind == ContactKind.customer;
   ApiClient get _api => context.read<AuthService>().api;
 
   @override
@@ -73,17 +101,43 @@ class _ContactListState extends State<_ContactList> {
     _load();
   }
 
-  Future<void> _load([String? q]) async {
-    setState(() => _loading = true);
+  Future<void> _load({String? q, bool reset = true}) async {
+    setState(() {
+      if (reset) {
+        _page = 1;
+        _loading = true;
+      } else {
+        _loadingMore = true;
+      }
+    });
+    final search = q ?? _searchController.text;
+    final params = {
+      'page': '$_page',
+      'ordering': _ordering,
+      if (search.isNotEmpty) 'search': search,
+      if (!_isCustomer && _supplierType != null) 'supplier_type': _supplierType!,
+    };
+    final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
     try {
-      final qs = q != null && q.isNotEmpty ? '?search=${Uri.encodeComponent(q)}' : '';
-      final data = await _api.request('$_endpoint$qs');
-      if (mounted) setState(() => _items = data as List<dynamic>);
+      final data = await _api.request('$_endpoint?$qs') as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>;
+      if (mounted) {
+        setState(() {
+          _items = reset ? results : [..._items, ...results];
+          _hasMore = data['next'] != null;
+        });
+      }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loading = _loadingMore = false);
     }
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore || _loadingMore) return;
+    _page++;
+    await _load(q: _searchController.text, reset: false);
   }
 
   Future<void> _openForm([Map<String, dynamic>? existing]) async {
@@ -91,7 +145,22 @@ class _ContactListState extends State<_ContactList> {
       context,
       MaterialPageRoute(builder: (context) => ContactFormScreen(kind: widget.kind, existing: existing)),
     );
-    if (saved == true) _load(_searchController.text);
+    if (saved == true) _load(q: _searchController.text);
+  }
+
+  Future<void> _deleteItem(Map<String, dynamic> item) async {
+    final confirmed = await confirmDelete(context, itemLabel: item['name'] as String?);
+    if (!confirmed) return;
+    try {
+      await _api.request('$_endpoint${item['id']}/', method: 'DELETE');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('${_isCustomer ? "Customer" : "Vendor"} deleted.')));
+      }
+      _load(q: _searchController.text);
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _openDetail(Map<String, dynamic> item) async {
@@ -245,7 +314,7 @@ class _ContactListState extends State<_ContactList> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment recorded.')));
       }
-      _load(_searchController.text);
+      _load(q: _searchController.text);
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -253,6 +322,8 @@ class _ContactListState extends State<_ContactList> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = context.watch<AuthService>().isAdmin;
+    final sortOptions = _isCustomer ? _customerSortOptions : _supplierSortOptions;
     return Scaffold(
       floatingActionButton: GradientFab(
         onPressed: () => _openForm(),
@@ -262,15 +333,57 @@ class _ContactListState extends State<_ContactList> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Search by name, phone...',
                 border: const OutlineInputBorder(),
-                suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () => _load(_searchController.text)),
+                suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () => _load(q: _searchController.text)),
               ),
-              onSubmitted: _load,
+              onSubmitted: (v) => _load(q: v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                if (!_isCustomer)
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final (value, label) in _supplierTypeOptions) ...[
+                            ChoiceChip(
+                              label: Text(label),
+                              selected: _supplierType == value,
+                              onSelected: (_) {
+                                setState(() => _supplierType = value);
+                                _load(q: _searchController.text);
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.sort),
+                  tooltip: 'Sort by',
+                  onSelected: (v) {
+                    setState(() => _ordering = v);
+                    _load(q: _searchController.text);
+                  },
+                  itemBuilder: (context) => [
+                    for (final (value, label) in sortOptions)
+                      CheckedPopupMenuItem(value: value, checked: _ordering == value, child: Text(label)),
+                  ],
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -279,10 +392,20 @@ class _ContactListState extends State<_ContactList> {
                 : _items.isEmpty
                     ? const Center(child: Text('Nothing here yet.'))
                     : RefreshIndicator(
-                        onRefresh: () => _load(_searchController.text),
+                        onRefresh: () => _load(q: _searchController.text),
                         child: ListView.builder(
-                          itemCount: _items.length,
+                          itemCount: _items.length + (_hasMore ? 1 : 0),
                           itemBuilder: (context, i) {
+                            if (i == _items.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: _loadingMore
+                                      ? const CircularProgressIndicator()
+                                      : TextButton(onPressed: _loadMore, child: const Text('Load more')),
+                                ),
+                              );
+                            }
                             final item = _items[i] as Map<String, dynamic>;
                             final outstanding = double.tryParse(item['outstanding_balance']?.toString() ?? '0') ?? 0;
                             return ListTile(
@@ -306,6 +429,7 @@ class _ContactListState extends State<_ContactList> {
                                     icon: const Icon(Icons.edit_outlined, size: 18),
                                     onPressed: () => _openForm(item),
                                   ),
+                                  if (isAdmin) DeleteIconButton(onPressed: () => _deleteItem(item)),
                                 ],
                               ),
                               onTap: () => _openDetail(item),

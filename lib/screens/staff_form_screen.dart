@@ -44,10 +44,11 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
 
   Future<void> _loadRoles() async {
     try {
-      final data = await _api.request('/api/auth/roles/') as List<dynamic>;
+      final data = await _api.request('/api/auth/roles/') as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>;
       if (mounted) {
         setState(() {
-          _roles = data.map((r) => Role(r['id'] as int, r['name'] as String)).toList();
+          _roles = results.map((r) => Role(r['id'] as int, r['name'] as String)).toList();
           _roleId ??= _roles.isNotEmpty ? _roles.first.id : null;
         });
       }

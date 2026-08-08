@@ -9,6 +9,7 @@ import 'contacts_screen.dart';
 import 'expenses_screen.dart';
 import 'accounting_screen.dart';
 import 'search_screen.dart';
+import 'recycle_bin_screen.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -82,6 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 context.read<AuthService>().logout();
               } else if (value == 'appearance') {
                 _showAppearanceDialog(context);
+              } else if (value == 'recycle_bin') {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const RecycleBinScreen()));
               }
             },
             itemBuilder: (context) => [
@@ -101,6 +104,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
+              if (context.read<AuthService>().isAdmin)
+                const PopupMenuItem(
+                  value: 'recycle_bin',
+                  child: ListTile(
+                    leading: Icon(Icons.delete_outline),
+                    title: Text('Recycle Bin'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
             child: CircleAvatar(
