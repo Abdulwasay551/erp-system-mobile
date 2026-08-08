@@ -6,6 +6,7 @@ import '../services/pdf_helper.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/discount_editor.dart';
+import 'bill_edit_screen.dart';
 
 class ReceivingScreen extends StatefulWidget {
   const ReceivingScreen({super.key});
@@ -109,6 +110,18 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
                                   }
                                 },
                               ),
+                              if (isAdmin)
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  tooltip: 'Edit',
+                                  onPressed: () async {
+                                    final changed = await Navigator.push<bool>(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => BillEditScreen(bill: bill)),
+                                    );
+                                    if (changed == true) _load();
+                                  },
+                                ),
                               if (isAdmin) DeleteIconButton(onPressed: () => _deleteBill(bill)),
                               const SizedBox(width: 4),
                               FilledButton(onPressed: () => _openReceive(bill), child: const Text('Receive')),

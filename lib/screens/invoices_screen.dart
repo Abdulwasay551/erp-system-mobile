@@ -6,6 +6,7 @@ import '../services/pdf_helper.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/tag_pill.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import 'invoice_edit_screen.dart';
 
 const _statusOptions = [
   (null, 'All'),
@@ -332,6 +333,29 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
               ),
             ],
           ),
+          if (context.read<AuthService>().isAdmin) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                final changed = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => InvoiceEditScreen(
+                      invoiceId: inv['id'] as int,
+                      invoiceNumber: inv['invoice_number'] as String,
+                    ),
+                  ),
+                );
+                if (changed == true) {
+                  widget.onChanged();
+                  navigator.pop();
+                }
+              },
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit Line Items'),
+            ),
+          ],
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 8),
