@@ -133,16 +133,22 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Active', style: TextStyle(fontWeight: FontWeight.w500)),
-                              Text('Inactive staff can\'t log in.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              const Text('Active', style: TextStyle(fontWeight: FontWeight.w500)),
+                              Text(
+                                'Inactive staff can\'t log in.',
+                                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
                             ],
                           ),
                         ),
@@ -154,9 +160,12 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
                     ),
                   ),
                   if (widget.isSelf)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Text('You can\'t deactivate your own account.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'You can\'t deactivate your own account.',
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
                     ),
                 ],
                 const SizedBox(height: 12),

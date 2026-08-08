@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../theme/app_semantic_colors.dart';
 import '../widgets/skeleton.dart';
 import 'expenses_screen.dart';
 import 'staff_screen.dart';
-
-const _ink = Color(0xFF171717);
 
 const _periods = [
   (7, 'Last 7 days'),
@@ -51,7 +50,7 @@ class _AccountingScreenState extends State<AccountingScreen> {
     }
   }
 
-  Widget _statCard(String label, String value, {Color? color}) {
+  Widget _statCard(String label, String value, IconData icon, {Color? color}) {
     return Expanded(
       child: Card(
         child: Padding(
@@ -59,7 +58,13 @@ class _AccountingScreenState extends State<AccountingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Row(
+                children: [
+                  Icon(icon, size: 14, color: color ?? Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 5),
+                  Text(label, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                ],
+              ),
               const SizedBox(height: 4),
               Text(
                 'Rs. $value',
@@ -92,6 +97,12 @@ class _AccountingScreenState extends State<AccountingScreen> {
 
   Widget _chart(List<dynamic> days) {
     if (days.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    final semantic = context.semanticColors;
+    final revenueGradient = LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [
+      scheme.primary,
+      scheme.secondary,
+    ]);
     final groups = <BarChartGroupData>[];
     double maxY = 1;
     for (var i = 0; i < days.length; i++) {
@@ -100,8 +111,8 @@ class _AccountingScreenState extends State<AccountingScreen> {
       final cost = (double.tryParse(d['cogs'].toString()) ?? 0) + (double.tryParse(d['expenses'].toString()) ?? 0);
       maxY = [maxY, revenue, cost].reduce((a, b) => a > b ? a : b);
       groups.add(BarChartGroupData(x: i, barRods: [
-        BarChartRodData(toY: revenue, color: _ink, width: 6, borderRadius: BorderRadius.circular(2)),
-        BarChartRodData(toY: cost, color: Colors.red.shade300, width: 6, borderRadius: BorderRadius.circular(2)),
+        BarChartRodData(toY: revenue, gradient: revenueGradient, width: 6, borderRadius: BorderRadius.circular(2)),
+        BarChartRodData(toY: cost, color: semantic.danger, width: 6, borderRadius: BorderRadius.circular(2)),
       ]));
     }
     final labelEvery = (days.length / 6).ceil().clamp(1, days.length);
@@ -117,9 +128,9 @@ class _AccountingScreenState extends State<AccountingScreen> {
                 children: [
                   Text('Revenue vs. Costs', style: Theme.of(context).textTheme.titleSmall),
                   const Spacer(),
-                  _legendDot(_ink, 'Revenue'),
+                  _legendDot(scheme.primary, 'Revenue'),
                   const SizedBox(width: 10),
-                  _legendDot(Colors.red.shade300, 'Costs'),
+                  _legendDot(semantic.danger, 'Costs'),
                 ],
               ),
             ),
@@ -129,7 +140,12 @@ class _AccountingScreenState extends State<AccountingScreen> {
                 BarChartData(
                   maxY: maxY * 1.15,
                   barGroups: groups,
-                  gridData: const FlGridData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: (maxY * 1.15) / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(color: scheme.outline.withValues(alpha: 0.15), strokeWidth: 1),
+                  ),
                   borderData: FlBorderData(show: false),
                   titlesData: FlTitlesData(
                     leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -145,7 +161,7 @@ class _AccountingScreenState extends State<AccountingScreen> {
                           final date = (days[i] as Map<String, dynamic>)['date'].toString();
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: Text(date.substring(5), style: TextStyle(fontSize: 9, color: Colors.grey.shade600)),
+                            child: Text(date.substring(5), style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant)),
                           );
                         },
                       ),
@@ -164,7 +180,7 @@ class _AccountingScreenState extends State<AccountingScreen> {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
       const SizedBox(width: 4),
-      Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+      Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
     ]);
   }
 
@@ -216,24 +232,35 @@ class _AccountingScreenState extends State<AccountingScreen> {
                           const Skeleton(height: 220, borderRadius: BorderRadius.all(Radius.circular(12))),
                         ] else if (totals != null) ...[
                           Row(children: [
-                            _statCard('Revenue', totals['revenue'].toString()),
+                            _statCard('Revenue', totals['revenue'].toString(), Icons.trending_up),
                             const SizedBox(width: 8),
-                            _statCard('COGS', totals['cogs'].toString()),
+                            _statCard('COGS', totals['cogs'].toString(), Icons.inventory_2_outlined),
                           ]),
                           const SizedBox(height: 8),
                           Row(children: [
-                            _statCard('Gross Profit', totals['gross_profit'].toString(), color: Colors.green.shade700),
+                            _statCard(
+                              'Gross Profit',
+                              totals['gross_profit'].toString(),
+                              Icons.savings_outlined,
+                              color: context.semanticColors.success,
+                            ),
                             const SizedBox(width: 8),
-                            _statCard('Expenses', totals['expenses'].toString(), color: Colors.red.shade700),
+                            _statCard(
+                              'Expenses',
+                              totals['expenses'].toString(),
+                              Icons.receipt_long_outlined,
+                              color: context.semanticColors.danger,
+                            ),
                           ]),
                           const SizedBox(height: 8),
                           Row(children: [
                             _statCard(
                               'Net Profit',
                               totals['net_profit'].toString(),
+                              Icons.account_balance_wallet_outlined,
                               color: (double.tryParse(totals['net_profit'].toString()) ?? 0) >= 0
-                                  ? Colors.green.shade700
-                                  : Colors.red.shade700,
+                                  ? context.semanticColors.success
+                                  : context.semanticColors.danger,
                             ),
                           ]),
                           const SizedBox(height: 16),

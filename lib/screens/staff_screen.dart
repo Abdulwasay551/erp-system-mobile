@@ -71,6 +71,7 @@ class _StaffScreenState extends State<StaffScreen> {
                         itemBuilder: (context, i) {
                           final u = _users[i] as Map<String, dynamic>;
                           final active = u['is_active'] == true;
+                          final scheme = Theme.of(context).colorScheme;
                           return Card(
                             child: ListTile(
                               title: Text('${u['first_name']} ${u['last_name']}'.trim().isEmpty ? u['email'] : '${u['first_name']} ${u['last_name']}'),
@@ -81,12 +82,12 @@ class _StaffScreenState extends State<StaffScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: active ? const Color(0xFF171717) : Colors.grey.shade300,
+                                      color: active ? scheme.primary : scheme.surfaceContainerHighest,
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
                                       active ? 'Active' : 'Inactive',
-                                      style: TextStyle(fontSize: 11, color: active ? Colors.white : Colors.grey.shade700),
+                                      style: TextStyle(fontSize: 11, color: active ? scheme.onPrimary : scheme.onSurfaceVariant),
                                     ),
                                   ),
                                   IconButton(
