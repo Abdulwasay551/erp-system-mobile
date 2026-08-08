@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/theme_service.dart';
 import 'dashboard_screen.dart';
 import 'sales_screen.dart';
 import 'receiving_screen.dart';
@@ -24,6 +25,34 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _baseTitles = ['Dashboard', 'Sales', 'Receiving', 'Contacts', 'Expenses'];
 
   void _goToTab(int i) => setState(() => _index = i);
+
+  Future<void> _showAppearanceDialog(BuildContext context) async {
+    final themeService = context.read<ThemeService>();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Appearance'),
+          content: RadioGroup<ThemeMode>(
+            groupValue: themeService.themeMode,
+            onChanged: (v) {
+              themeService.setThemeMode(v!);
+              setDialogState(() {});
+            },
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<ThemeMode>(title: Text('System'), value: ThemeMode.system),
+                RadioListTile<ThemeMode>(title: Text('Light'), value: ThemeMode.light),
+                RadioListTile<ThemeMode>(title: Text('Dark'), value: ThemeMode.dark),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
             onSelected: (value) {
               if (value == 'logout') {
                 context.read<AuthService>().logout();
+              } else if (value == 'appearance') {
+                _showAppearanceDialog(context);
               }
             },
             itemBuilder: (context) => [
@@ -62,12 +93,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'appearance',
+                child: ListTile(
+                  leading: Icon(Icons.palette_outlined),
+                  title: Text('Appearance'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
             child: CircleAvatar(
               radius: 16,
-              backgroundColor: const Color(0xFF171717),
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
               child: Text(auth.user?.initials ?? '?', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           ),

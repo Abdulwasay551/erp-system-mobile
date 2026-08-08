@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../widgets/tag_pill.dart';
 
 const _typeLabel = {
   'invoice': 'Invoice',
@@ -80,7 +81,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ? Center(
                   child: Text(
                     _controller.text.trim().length < 2 ? 'Type at least 2 characters to search.' : 'No matches.',
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 )
               : ListView.builder(
@@ -92,13 +93,9 @@ class _SearchScreenState extends State<SearchScreen> {
                       subtitle: r['subtitle'] != null && r['subtitle'].toString().isNotEmpty
                           ? Text(r['subtitle'].toString())
                           : null,
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(20)),
-                        child: Text(
-                          _typeLabel[r['type']] ?? r['type'].toString(),
-                          style: const TextStyle(fontSize: 11),
-                        ),
+                      trailing: TagPill(
+                        label: _typeLabel[r['type']] ?? r['type'].toString(),
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     );
                   },

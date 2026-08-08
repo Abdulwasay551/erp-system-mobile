@@ -41,8 +41,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -52,15 +52,34 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: scheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE5E5E5)),
+                  border: Border.all(color: scheme.outline),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Image.asset('assets/icon/app_icon.jpg', width: 96, height: 96, fit: BoxFit.contain),
+                    Center(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [scheme.primary.withValues(alpha: 0.18), scheme.primary.withValues(alpha: 0)],
+                              ),
+                            ),
+                          ),
+                          ClipOval(
+                            child: Image.asset('assets/icon/app_icon.jpg', width: 96, height: 96, fit: BoxFit.cover),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       'Mobile Corner ERP',
@@ -71,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'Sign in to your shop account',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 24),
                     TextField(
@@ -88,16 +107,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                      Text(_error!, style: TextStyle(color: scheme.error)),
                     ],
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: _submitting ? null : _submit,
                       child: _submitting
-                          ? const SizedBox(
+                          ? SizedBox(
                               height: 18,
                               width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(strokeWidth: 2, color: scheme.onPrimary),
                             )
                           : const Text('Sign in'),
                     ),
