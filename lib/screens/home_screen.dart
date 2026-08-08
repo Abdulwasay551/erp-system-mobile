@@ -10,6 +10,7 @@ import 'expenses_screen.dart';
 import 'accounting_screen.dart';
 import 'search_screen.dart';
 import 'recycle_bin_screen.dart';
+import 'item_lookup_screen.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -85,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showAppearanceDialog(context);
               } else if (value == 'recycle_bin') {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const RecycleBinScreen()));
+              } else if (value == 'item_lookup') {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ItemLookupScreen()));
               }
             },
             itemBuilder: (context) => [
@@ -101,6 +104,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListTile(
                   leading: Icon(Icons.palette_outlined),
                   title: Text('Appearance'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'item_lookup',
+                child: ListTile(
+                  leading: Icon(Icons.qr_code_scanner_outlined),
+                  title: Text('Item Lookup'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),

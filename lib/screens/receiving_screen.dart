@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/discount_editor.dart';
 
 class ReceivingScreen extends StatefulWidget {
   const ReceivingScreen({super.key});
@@ -136,6 +137,7 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
   List<dynamic> _productResults = [];
   Map<String, dynamic>? _selectedSupplier;
   final List<Map<String, dynamic>> _lines = [];
+  final _headerDiscountController = TextEditingController();
   bool _creating = false;
 
   ApiClient get _api => context.read<AuthService>().api;
@@ -165,6 +167,7 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
         'tracking_method': product['tracking_method'],
         'unit_price': TextEditingController(),
         'expected_quantity': TextEditingController(text: product['tracking_method'] != 'none' ? '1' : ''),
+        'discounts': <DiscountEntry>[],
       });
       _productResults = [];
       _productSearchController.clear();
@@ -186,8 +189,13 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
                   'product_id': l['product_id'],
                   'unit_price': (l['unit_price'] as TextEditingController).text,
                   'expected_quantity': (l['expected_quantity'] as TextEditingController).text,
+                  'discounts': (l['discounts'] as List<DiscountEntry>)
+                      .where((d) => (double.tryParse(d.value) ?? 0) > 0)
+                      .map((d) => d.toJson())
+                      .toList(),
                 })
             .toList(),
+        if (_headerDiscountController.text.isNotEmpty) 'discount_amount': _headerDiscountController.text,
       });
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -250,41 +258,67 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
             );
           }),
           const SizedBox(height: 16),
-          ..._lines.map((l) => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: l['unit_price'] as TextEditingController,
-                              decoration: const InputDecoration(labelText: 'Unit price'),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            ),
+          ..._lines.map((l) {
+            final discounts = l['discounts'] as List<DiscountEntry>;
+            final activeCount = discounts.where((d) => (double.tryParse(d.value) ?? 0) > 0).length;
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: l['unit_price'] as TextEditingController,
+                            decoration: const InputDecoration(labelText: 'Unit price'),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: l['expected_quantity'] as TextEditingController,
-                              decoration: const InputDecoration(labelText: 'Expected qty'),
-                              keyboardType: TextInputType.number,
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: l['expected_quantity'] as TextEditingController,
+                            decoration: const InputDecoration(labelText: 'Expected qty'),
+                            keyboardType: TextInputType.number,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () => setState(() => _lines.remove(l)),
+                        ),
+                        IconButton(
+                          icon: Badge(
+                            isLabelVisible: activeCount > 0,
+                            label: Text('$activeCount'),
+                            child: const Icon(Icons.percent),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                          tooltip: 'Discounts',
+                          onPressed: () async {
+                            final result = await showDiscountEditorDialog(
+                              context,
+                              title: l['name'] as String,
+                              initial: discounts,
+                            );
+                            if (result != null) setState(() => l['discounts'] = result);
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => setState(() => _lines.remove(l)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              )),
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _headerDiscountController,
+            decoration: const InputDecoration(labelText: 'Whole-bill discount', hintText: '0.00', border: OutlineInputBorder()),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _creating ? null : _createInvoice,
