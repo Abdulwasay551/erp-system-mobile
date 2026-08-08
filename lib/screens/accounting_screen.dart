@@ -176,6 +176,68 @@ class _AccountingScreenState extends State<AccountingScreen> {
     );
   }
 
+  /// `days` always runs from `today - (period-1)` through `today` inclusive
+  /// regardless of which period chip is selected, so the last element is always
+  /// today's row - no separate "today" endpoint needed.
+  Widget _todayCard(List<dynamic> days) {
+    if (days.isEmpty) return const SizedBox.shrink();
+    final today = days.last as Map<String, dynamic>;
+    final scheme = Theme.of(context).colorScheme;
+    final revenue = double.tryParse(today['revenue'].toString()) ?? 0;
+    final cogs = double.tryParse(today['cogs'].toString()) ?? 0;
+    final expenses = double.tryParse(today['expenses'].toString()) ?? 0;
+    final netProfit = revenue - cogs - expenses;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppGradients.primary(scheme),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: scheme.primary.withValues(alpha: 0.3), blurRadius: 14, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.today_outlined, size: 18, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Today', style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Rs. ${revenue.toStringAsFixed(2)} revenue',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text('Net Profit', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                Text(
+                  'Rs. ${netProfit.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _legendDot(Color color, String label) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
@@ -222,6 +284,10 @@ class _AccountingScreenState extends State<AccountingScreen> {
                               .toList(),
                         ),
                         const SizedBox(height: 16),
+                        if (!_loading && days.isNotEmpty) ...[
+                          _todayCard(days),
+                          const SizedBox(height: 16),
+                        ],
                         if (_loading) ...[
                           Row(children: [_statCardSkeleton(), const SizedBox(width: 8), _statCardSkeleton()]),
                           const SizedBox(height: 8),
