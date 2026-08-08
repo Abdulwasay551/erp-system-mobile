@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/discount_editor.dart';
 import 'barcode_scanner_screen.dart';
 
 class _CartLine {
@@ -12,9 +14,11 @@ class _CartLine {
   final int? trackingId;
   final String name;
   final String identifier;
-  final double unitPrice;
+  double unitPrice;
+  final double avgPurchasePrice;
   double quantity;
   final double maxQty;
+  List<DiscountEntry> discounts;
 
   _CartLine({
     required this.key,
@@ -23,9 +27,11 @@ class _CartLine {
     required this.name,
     required this.identifier,
     required this.unitPrice,
+    required this.avgPurchasePrice,
     required this.quantity,
     required this.maxQty,
-  });
+    List<DiscountEntry>? discounts,
+  }) : discounts = discounts ?? [];
 }
 
 const _paymentMethods = [
@@ -71,12 +77,16 @@ class _POSScreenState extends State<POSScreen> {
   ApiClient get _api => context.read<AuthService>().api;
 
   double get _cartSubtotal => _cart.fold(0, (sum, l) => sum + l.unitPrice * l.quantity);
+  double get _lineDiscountsTotal => _cart.fold(
+        0,
+        (sum, l) => sum + computeDiscountTotal(l.unitPrice * l.quantity, l.quantity, l.discounts),
+      );
   double get _discountAmount {
     final v = double.tryParse(_discountController.text) ?? 0;
-    return v.clamp(0, _cartSubtotal).toDouble();
+    return v.clamp(0, (_cartSubtotal - _lineDiscountsTotal).clamp(0, double.infinity)).toDouble();
   }
 
-  double get _cartTotal => _cartSubtotal - _discountAmount;
+  double get _cartTotal => _cartSubtotal - _lineDiscountsTotal - _discountAmount;
 
   Future<void> _search() async {
     final q = _searchController.text.trim();
@@ -121,6 +131,7 @@ class _POSScreenState extends State<POSScreen> {
         name: variant != null ? '${item['name']} ($variant)' : item['name'] as String,
         identifier: item['identifier']?.toString() ?? '',
         unitPrice: double.parse(item['unit_price'].toString()),
+        avgPurchasePrice: double.tryParse(item['avg_purchase_price']?.toString() ?? '') ?? 0,
         quantity: 1,
         maxQty: trackingId != null ? 1 : double.parse(item['available_qty'].toString()),
       ));
@@ -144,6 +155,10 @@ class _POSScreenState extends State<POSScreen> {
                   if (l.trackingId != null) 'tracking_id': l.trackingId,
                   if (l.trackingId == null) 'quantity': l.quantity,
                   'unit_price': l.unitPrice,
+                  'discounts': l.discounts
+                      .where((d) => (double.tryParse(d.value) ?? 0) > 0)
+                      .map((d) => d.toJson())
+                      .toList(),
                 })
             .toList(),
         if (_discountAmount > 0) 'discount_amount': _discountAmount,
@@ -250,13 +265,48 @@ class _POSScreenState extends State<POSScreen> {
           Card(
             child: Column(
               children: _cart.map((l) {
+                final belowCost = l.avgPurchasePrice > 0 && l.unitPrice < l.avgPurchasePrice;
+                final lineDiscount = computeDiscountTotal(l.unitPrice * l.quantity, l.quantity, l.discounts);
+                final activeDiscounts = l.discounts.where((d) => (double.tryParse(d.value) ?? 0) > 0).length;
                 return ListTile(
                   title: Text(l.name),
-                  subtitle: Text('Rs. ${l.unitPrice.toStringAsFixed(2)} × ${l.quantity.toStringAsFixed(0)}'),
+                  subtitle: Row(
+                    children: [
+                      if (belowCost)
+                        Tooltip(
+                          message: 'Below average purchase price of Rs. ${l.avgPurchasePrice.toStringAsFixed(2)} - reduces margin.',
+                          child: Icon(Icons.warning_amber_rounded, size: 16, color: context.semanticColors.warning),
+                        ),
+                      if (belowCost) const SizedBox(width: 4),
+                      SizedBox(
+                        width: 90,
+                        child: TextFormField(
+                          initialValue: l.unitPrice.toStringAsFixed(2),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                          onChanged: (v) => setState(() => l.unitPrice = double.tryParse(v) ?? l.unitPrice),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('× ${l.quantity.toStringAsFixed(0)}'),
+                      IconButton(
+                        icon: Badge(
+                          isLabelVisible: activeDiscounts > 0,
+                          label: Text('$activeDiscounts'),
+                          child: const Icon(Icons.percent, size: 18),
+                        ),
+                        tooltip: 'Discounts',
+                        onPressed: () async {
+                          final result = await showDiscountEditorDialog(context, title: l.name, initial: l.discounts);
+                          if (result != null) setState(() => l.discounts = result);
+                        },
+                      ),
+                    ],
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Rs. ${(l.unitPrice * l.quantity).toStringAsFixed(2)}'),
+                      Text('Rs. ${(l.unitPrice * l.quantity - lineDiscount).toStringAsFixed(2)}'),
                       IconButton(
                         icon: const Icon(Icons.close, size: 18),
                         onPressed: () => setState(() => _cart.remove(l)),
@@ -315,12 +365,22 @@ class _POSScreenState extends State<POSScreen> {
                     Text('Rs. ${_cartSubtotal.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   ],
                 ),
+                if (_lineDiscountsTotal > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Line discounts', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      Text('- Rs. ${_lineDiscountsTotal.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 8),
                 TextField(
                   controller: _discountController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'Discount', hintText: '0.00', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Cart-wide discount', hintText: '0.00', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
