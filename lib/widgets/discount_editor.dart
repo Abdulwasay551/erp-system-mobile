@@ -81,6 +81,7 @@ Future<List<DiscountEntry>?> showDiscountEditorDialog(
                         child: DropdownButtonFormField<String>(
                           initialValue: entry.type,
                           isDense: true,
+                          isExpanded: true,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           items: discountTypeLabels.entries
                               .map((t) => DropdownMenuItem(value: t.key, child: Text(t.value, overflow: TextOverflow.ellipsis)))
