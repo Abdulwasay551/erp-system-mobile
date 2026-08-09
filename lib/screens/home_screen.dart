@@ -11,6 +11,7 @@ import 'accounting_screen.dart';
 import 'search_screen.dart';
 import 'recycle_bin_screen.dart';
 import 'item_lookup_screen.dart';
+import 'staff_screen.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -60,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
     final isAdmin = _adminRoles.contains(auth.user?.roleName) || auth.user?.isSuperuser == true;
-    final titles = isAdmin ? [..._baseTitles, 'Accounting'] : _baseTitles;
+    final titles = isAdmin ? [..._baseTitles, 'Analytics'] : _baseTitles;
     final screens = [
       DashboardScreen(onNavigate: _goToTab),
       const SalesScreen(),
@@ -78,6 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SearchScreen())),
           ),
+          if (isAdmin)
+            IconButton(
+              icon: const Icon(Icons.badge_outlined),
+              tooltip: 'Staff Management',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StaffScreen())),
+            ),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'logout') {
@@ -147,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
           const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Expenses'),
           if (isAdmin)
-            const NavigationDestination(icon: Icon(Icons.account_balance_outlined), selectedIcon: Icon(Icons.account_balance), label: 'Accounting'),
+            const NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Analytics'),
         ],
       ),
     );

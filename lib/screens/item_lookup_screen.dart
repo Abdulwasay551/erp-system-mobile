@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../theme/app_semantic_colors.dart';
+import 'barcode_scanner_screen.dart';
 
 const _statusTone = {
   'available': 'success',
@@ -54,6 +55,16 @@ class _ItemLookupScreenState extends State<ItemLookupScreen> {
     }
   }
 
+  Future<void> _scan() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+    );
+    if (code == null || code.isEmpty) return;
+    _controller.text = code;
+    await _search();
+  }
+
   Color _toneColor(BuildContext context, String status) {
     final colors = context.semanticColors;
     switch (_statusTone[status]) {
@@ -80,9 +91,19 @@ class _ItemLookupScreenState extends State<ItemLookupScreen> {
               Expanded(
                 child: TextField(
                   controller: _controller,
-                  decoration: const InputDecoration(labelText: 'Scan or type an IMEI/serial/barcode', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Scan or type an IMEI/serial/barcode',
+                    helperText: 'Even a few digits works - matches anywhere in the number',
+                    border: OutlineInputBorder(),
+                  ),
                   onSubmitted: (_) => _search(),
                 ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _scan,
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(14)),
+                child: const Icon(Icons.qr_code_scanner),
               ),
               const SizedBox(width: 8),
               FilledButton(

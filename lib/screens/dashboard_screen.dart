@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -33,6 +34,7 @@ class _StatCardSpec {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _stats;
+  List<dynamic>? _trendDays;
   String? _error;
 
   @override
@@ -48,6 +50,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _stats = data as Map<String, dynamic>);
     } catch (e) {
       if (mounted) setState(() => _error = 'Failed to load dashboard.');
+    }
+    try {
+      final report = await api.request('/api/analytics/profit-report/?days=14') as Map<String, dynamic>;
+      if (mounted) setState(() => _trendDays = report['days'] as List<dynamic>?);
+    } catch (_) {
+      // Chart is a nice-to-have on the dashboard - a failure here shouldn't block the
+      // stat cards above, which already have their own error handling.
     }
   }
 
@@ -118,23 +127,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.15,
-        ),
-        itemCount: cards.length,
-        itemBuilder: (context, i) {
-          final spec = cards[i];
-          return _AnimatedStatCard(
-            index: i,
-            spec: spec,
-            onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(spec.tabIndex),
-          );
-        },
+      child: CustomScrollView(
+        slivers: [
+          if (_trendDays != null && _trendDays!.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _SalesTrendChart(days: _trendDays!),
+              ),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.15,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final spec = cards[i];
+                  return _AnimatedStatCard(
+                    index: i,
+                    spec: spec,
+                    onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(spec.tabIndex),
+                  );
+                },
+                childCount: cards.length,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -299,6 +323,103 @@ class _AnimatedStatCardState extends State<_AnimatedStatCard> with SingleTickerP
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// At-a-glance revenue trend for the last `days` entries (from /api/analytics/
+/// profit-report/) - the full Revenue-vs-Costs bar chart lives on the Analytics tab;
+/// this is a lighter single-line sparkline-style summary for the dashboard.
+class _SalesTrendChart extends StatelessWidget {
+  final List<dynamic> days;
+  const _SalesTrendChart({required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final spots = <FlSpot>[];
+    double maxY = 1;
+    for (var i = 0; i < days.length; i++) {
+      final d = days[i] as Map<String, dynamic>;
+      final revenue = double.tryParse(d['revenue'].toString()) ?? 0;
+      spots.add(FlSpot(i.toDouble(), revenue));
+      if (revenue > maxY) maxY = revenue;
+    }
+    final labelEvery = (days.length / 4).ceil().clamp(1, days.length);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 8, bottom: 8),
+              child: Text('Revenue - Last ${days.length} Days', style: Theme.of(context).textTheme.titleSmall),
+            ),
+            SizedBox(
+              height: 140,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY * 1.15,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: (maxY * 1.15) / 3,
+                    getDrawingHorizontalLine: (value) => FlLine(color: scheme.outline.withValues(alpha: 0.15), strokeWidth: 1),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 24,
+                        getTitlesWidget: (value, meta) {
+                          final i = value.toInt();
+                          if (i % labelEvery != 0 || i >= days.length) return const SizedBox.shrink();
+                          final date = (days[i] as Map<String, dynamic>)['date'].toString();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(date.substring(5), style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant)),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipItems: (spots) => spots
+                          .map((s) => LineTooltipItem('Rs. ${s.y.toStringAsFixed(0)}', TextStyle(color: scheme.onInverseSurface, fontSize: 11)))
+                          .toList(),
+                    ),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: scheme.primary,
+                      barWidth: 2.5,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [scheme.primary.withValues(alpha: 0.25), scheme.primary.withValues(alpha: 0.0)],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

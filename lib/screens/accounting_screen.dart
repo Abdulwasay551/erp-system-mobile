@@ -6,7 +6,6 @@ import '../services/api_client.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/skeleton.dart';
 import 'expenses_screen.dart';
-import 'staff_screen.dart';
 
 const _periods = [
   (7, 'Last 7 days'),
@@ -251,12 +250,12 @@ class _AccountingScreenState extends State<AccountingScreen> {
     final totals = _report?['totals'] as Map<String, dynamic>?;
     final days = _report?['days'] as List<dynamic>? ?? [];
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Column(
         children: [
           Material(
             color: Theme.of(context).scaffoldBackgroundColor,
-            child: const TabBar(tabs: [Tab(text: 'Profit & Loss'), Tab(text: 'Expenses'), Tab(text: 'Staff')]),
+            child: const TabBar(tabs: [Tab(text: 'Profit & Loss'), Tab(text: 'Expenses')]),
           ),
           Expanded(
             child: TabBarView(
@@ -268,20 +267,23 @@ class _AccountingScreenState extends State<AccountingScreen> {
                   : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        Row(
-                          children: _periods
-                              .map((p) => Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ChoiceChip(
-                                      label: Text(p.$2),
-                                      selected: _days == p.$1,
-                                      onSelected: (_) {
-                                        setState(() => _days = p.$1);
-                                        _load();
-                                      },
-                                    ),
-                                  ))
-                              .toList(),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _periods
+                                .map((p) => Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: ChoiceChip(
+                                        label: Text(p.$2),
+                                        selected: _days == p.$1,
+                                        onSelected: (_) {
+                                          setState(() => _days = p.$1);
+                                          _load();
+                                        },
+                                      ),
+                                    ))
+                                .toList(),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         if (!_loading && days.isNotEmpty) ...[
@@ -336,7 +338,6 @@ class _AccountingScreenState extends State<AccountingScreen> {
                     ),
             ),
                 const ExpensesScreen(),
-                const StaffScreen(),
               ],
             ),
           ),
