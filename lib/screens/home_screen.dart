@@ -12,6 +12,8 @@ import 'search_screen.dart';
 import 'recycle_bin_screen.dart';
 import 'item_lookup_screen.dart';
 import 'staff_screen.dart';
+import '../services/connectivity_service.dart';
+import '../services/reference_sync_service.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -28,6 +30,26 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _baseTitles = ['Dashboard', 'Sales', 'Receiving', 'Contacts', 'Expenses'];
 
   void _goToTab(int i) => setState(() => _index = i);
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeSyncReferenceData();
+  }
+
+  Future<void> _maybeSyncReferenceData() async {
+    if (!mounted) return;
+    final online = context.read<ConnectivityService>().isOnline;
+    if (!online) return;
+    final api = context.read<AuthService>().api;
+    if (!await ReferenceSyncService.isStale()) return;
+    try {
+      await ReferenceSyncService.syncNow(api);
+    } catch (_) {
+      // Best-effort - POS/vendor-invoice search just falls back to whatever was cached
+      // last time this succeeded (or stays empty offline if it's never succeeded yet).
+    }
+  }
 
   Future<void> _showAppearanceDialog(BuildContext context) async {
     final themeService = context.read<ThemeService>();

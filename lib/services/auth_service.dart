@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'offline_db.dart';
 
 class CurrentUser {
   final int id;
@@ -99,6 +100,11 @@ class AuthService extends ChangeNotifier {
 
   Future<void> logout() async {
     await _api.clearTokens();
+    // A different account may sign in next on this device - don't leave the previous
+    // company's cached products/customers or queued (possibly unsynced!) writes behind.
+    // Anything still pending in the sync queue is lost here; callers should steer users
+    // to Sync Status to clear the queue before logging out if that matters.
+    await OfflineDb.clearAll();
     _user = null;
     notifyListeners();
   }

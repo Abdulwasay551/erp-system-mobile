@@ -6,6 +6,8 @@ import '../services/pdf_helper.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/discount_editor.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_search.dart';
 import 'barcode_scanner_screen.dart';
 
 class _CartLine {
@@ -68,10 +70,18 @@ class _POSScreenState extends State<POSScreen> {
       setState(() => _customerResults = []);
       return;
     }
+    if (!context.read<ConnectivityService>().isOnline) {
+      final data = await OfflineSearch.searchCustomers(q);
+      if (mounted) setState(() => _customerResults = data);
+      return;
+    }
     try {
       final data = await _api.request('/api/crm/customers/?search=${Uri.encodeComponent(q)}') as Map<String, dynamic>;
       if (mounted) setState(() => _customerResults = data['results'] as List<dynamic>);
-    } catch (_) {}
+    } catch (_) {
+      final data = await OfflineSearch.searchCustomers(q);
+      if (mounted) setState(() => _customerResults = data);
+    }
   }
 
   ApiClient get _api => context.read<AuthService>().api;
@@ -92,14 +102,28 @@ class _POSScreenState extends State<POSScreen> {
     final q = _searchController.text.trim();
     if (q.isEmpty) return;
     setState(() => _searching = true);
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final data = await _api.request('/api/sales/pos/search/?q=${Uri.encodeComponent(q)}');
-      setState(() => _results = data as List<dynamic>);
+      if (online) {
+        final data = await _api.request('/api/sales/pos/search/?q=${Uri.encodeComponent(q)}');
+        setState(() => _results = data as List<dynamic>);
+      } else {
+        final data = await OfflineSearch.posSearch(q);
+        setState(() => _results = data);
+      }
       if (_results.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No matching products found.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(online ? 'No matching products found.' : 'No matching products found in offline data.'),
+        ));
       }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      // Live request failed for a non-ApiException reason (e.g. WiFi with no real
+      // internet, even though ConnectivityService thought we were online) - fall back
+      // to the local mirror instead of surfacing a raw exception.
+      final data = await OfflineSearch.posSearch(q);
+      if (mounted) setState(() => _results = data);
     } finally {
       if (mounted) setState(() => _searching = false);
     }

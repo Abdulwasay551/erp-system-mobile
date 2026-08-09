@@ -6,6 +6,8 @@ import '../services/pdf_helper.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/discount_editor.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_search.dart';
 import 'bill_edit_screen.dart';
 
 class ReceivingScreen extends StatefulWidget {
@@ -157,18 +159,34 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
 
   Future<void> _searchSuppliers(String q) async {
     if (q.trim().isEmpty) return;
+    if (!context.read<ConnectivityService>().isOnline) {
+      final data = await OfflineSearch.searchSuppliers(q);
+      if (mounted) setState(() => _supplierResults = data);
+      return;
+    }
     try {
       final data = await _api.request('/api/purchase/suppliers/?search=${Uri.encodeComponent(q)}') as Map<String, dynamic>;
       setState(() => _supplierResults = data['results'] as List<dynamic>);
-    } catch (_) {}
+    } catch (_) {
+      final data = await OfflineSearch.searchSuppliers(q);
+      if (mounted) setState(() => _supplierResults = data);
+    }
   }
 
   Future<void> _searchProducts(String q) async {
     if (q.trim().isEmpty) return;
+    if (!context.read<ConnectivityService>().isOnline) {
+      final data = await OfflineSearch.searchProducts(q);
+      if (mounted) setState(() => _productResults = data);
+      return;
+    }
     try {
       final data = await _api.request('/api/products/products/?search=${Uri.encodeComponent(q)}');
       setState(() => _productResults = data is List ? data : (data['results'] as List<dynamic>));
-    } catch (_) {}
+    } catch (_) {
+      final data = await OfflineSearch.searchProducts(q);
+      if (mounted) setState(() => _productResults = data);
+    }
   }
 
   void _addLine(Map<String, dynamic> product) {
