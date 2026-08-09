@@ -14,6 +14,7 @@ import 'item_lookup_screen.dart';
 import 'staff_screen.dart';
 import '../services/connectivity_service.dart';
 import '../services/reference_sync_service.dart';
+import '../services/sync_service.dart';
 
 const _adminRoles = {'Owner', 'Manager'};
 
@@ -35,6 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _maybeSyncReferenceData();
+    final api = context.read<AuthService>().api;
+    SyncService(api).drain();
+    context.read<ConnectivityService>().onRegained = () => SyncService(api).drain();
   }
 
   Future<void> _maybeSyncReferenceData() async {

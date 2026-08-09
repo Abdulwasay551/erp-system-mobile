@@ -16,7 +16,7 @@ class ConnectivityService extends ChangeNotifier {
   bool get isOnline => _isOnline;
 
   StreamSubscription<List<ConnectivityResult>>? _sub;
-  final void Function()? onRegained;
+  void Function()? onRegained;
 
   ConnectivityService({this.onRegained}) {
     _init();

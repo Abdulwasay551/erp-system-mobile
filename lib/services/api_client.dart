@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+import 'offline_db.dart';
 
 /// Points at the deployed backend so this build works for real testers on
 /// real devices, not just the local dev emulator. For local development
@@ -14,6 +16,15 @@ class ApiException implements Exception {
   ApiException(this.statusCode, this.message);
   @override
   String toString() => message;
+}
+
+/// Result of [ApiClient.enqueueOrSend]: either the write went through immediately
+/// ([queued] false, [result] holds the real server response) or it was saved to the
+/// offline queue for later ([queued] true, [result] is null).
+class EnqueueResult {
+  final bool queued;
+  final dynamic result;
+  EnqueueResult({required this.queued, this.result});
 }
 
 class ApiClient {
@@ -111,6 +122,53 @@ class ApiClient {
     }
 
     return data;
+  }
+
+  /// Write path for the Tier 1/2 offline-capable actions (POS checkout, add customer/
+  /// supplier, add expense, record payment, create vendor invoice): sends immediately
+  /// if [isOnline], falling back to the local sync queue only when the live attempt
+  /// actually fails with a network-level error (not a real server rejection - an
+  /// [ApiException] like a validation error is rethrown immediately so the user finds
+  /// out right away instead of it silently failing again later at sync time). If
+  /// [isOnline] is already false, queues straight away without attempting the request.
+  ///
+  /// Every write gets a client_request_id merged into its body - the backend's
+  /// idempotency support (core.idempotency) uses this to make a queued item's eventual
+  /// sync replay-safe even if the response is lost after it actually succeeds.
+  Future<EnqueueResult> enqueueOrSend({
+    required bool isOnline,
+    required String queueType,
+    required String path,
+    required Map<String, dynamic> body,
+    required String summary,
+  }) async {
+    final requestId = const Uuid().v4();
+    final bodyWithKey = {...body, 'client_request_id': requestId};
+
+    if (isOnline) {
+      try {
+        final result = await request(path, method: 'POST', body: bodyWithKey);
+        return EnqueueResult(queued: false, result: result);
+      } on ApiException {
+        rethrow;
+      } catch (_) {
+        // Looked online but the request itself failed (WiFi with no real internet,
+        // connection dropped mid-request, etc.) - don't lose the write, queue it.
+      }
+    }
+
+    final db = await OfflineDb.instance;
+    await db.insert('sync_queue', {
+      'client_request_id': requestId,
+      'queue_type': queueType,
+      'method': 'POST',
+      'path': path,
+      'payload_json': jsonEncode(bodyWithKey),
+      'summary': summary,
+      'status': 'pending',
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+    return EnqueueResult(queued: true);
   }
 
   /// Fetches a binary (PDF) endpoint with the auth header attached - separate from

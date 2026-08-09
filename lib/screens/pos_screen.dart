@@ -188,9 +188,19 @@ class _POSScreenState extends State<POSScreen> {
         if (_discountAmount > 0) 'discount_amount': _discountAmount,
         'payment': {'method': _paymentMethod, 'amount': _cartTotal},
       };
-      final result = await _api.request('/api/sales/pos/checkout/', method: 'POST', body: payload);
+      final itemCount = _cart.length;
+      final summary = 'Sale - Rs. ${_cartTotal.toStringAsFixed(2)} - $itemCount item${itemCount == 1 ? '' : 's'}';
+      final online = context.read<ConnectivityService>().isOnline;
+      final enqueueResult = await _api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'pos_checkout',
+        path: '/api/sales/pos/checkout/',
+        body: payload,
+        summary: summary,
+      );
+
       setState(() {
-        _lastInvoice = result as Map<String, dynamic>;
+        _lastInvoice = enqueueResult.queued ? null : enqueueResult.result as Map<String, dynamic>;
         _cart.clear();
         _selectedCustomer = null;
         _customerSearchController.clear();
@@ -198,8 +208,10 @@ class _POSScreenState extends State<POSScreen> {
         _discountController.clear();
       });
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Invoice ${result['invoice_number']} created.')));
+        final message = enqueueResult.queued
+            ? 'Sale saved offline - will sync automatically once back online.'
+            : 'Invoice ${enqueueResult.result['invoice_number']} created.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
