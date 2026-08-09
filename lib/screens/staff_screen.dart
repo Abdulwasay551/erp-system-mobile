@@ -118,6 +118,7 @@ class _StaffScreenState extends State<StaffScreen> {
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
+      appBar: AppBar(title: const Text('Staff Management')),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
         child: const Icon(Icons.person_add_alt),
