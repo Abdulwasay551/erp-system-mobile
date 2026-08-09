@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
@@ -295,6 +296,7 @@ class _ContactListState extends State<_ContactList> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
     try {
       final endpoint = widget.kind == ContactKind.customer ? '/api/sales/payments/' : '/api/purchase/purchase-payments/';
       final body = widget.kind == ContactKind.customer
@@ -310,9 +312,18 @@ class _ContactListState extends State<_ContactList> {
               'payment_method': 'cash',
               'payment_date': DateTime.now().toIso8601String().substring(0, 10),
             };
-      await _api.request(endpoint, method: 'POST', body: body);
+      final online = context.read<ConnectivityService>().isOnline;
+      final result = await _api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'record_payment',
+        path: endpoint,
+        body: body,
+        summary: 'Payment - Rs. ${amountController.text} - ${item['name']}',
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment recorded.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.queued ? 'Payment saved offline - will sync automatically.' : 'Payment recorded.'),
+        ));
       }
       _load(q: _searchController.text);
     } on ApiException catch (e) {

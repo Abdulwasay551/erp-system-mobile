@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/connectivity_service.dart';
 
 enum ContactKind { customer, supplier }
 
@@ -83,13 +84,25 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
               'supplier_type': _supplierType,
             };
       if (_isEdit) {
+        // Editing an existing contact needs a live round trip, unlike adding a new one -
+        // not in the offline-capable tier (see the offline-support plan).
         await _api.request('$_endpoint${widget.existing!['id']}/', method: 'PATCH', body: body);
+        messenger.showSnackBar(SnackBar(content: Text('${_isCustomer ? "Customer" : "Vendor"} updated.')));
       } else {
-        await _api.request(_endpoint, method: 'POST', body: body);
+        final online = context.read<ConnectivityService>().isOnline;
+        final result = await _api.enqueueOrSend(
+          isOnline: online,
+          queueType: _isCustomer ? 'create_customer' : 'create_supplier',
+          path: _endpoint,
+          body: body,
+          summary: '${_isCustomer ? "New customer" : "New vendor"} - ${_name.text.trim()}',
+        );
+        messenger.showSnackBar(SnackBar(
+          content: Text(result.queued
+              ? '${_isCustomer ? "Customer" : "Vendor"} saved offline - will sync automatically.'
+              : '${_isCustomer ? "Customer" : "Vendor"} added.'),
+        ));
       }
-      messenger.showSnackBar(SnackBar(
-        content: Text('${_isCustomer ? "Customer" : "Vendor"} ${_isEdit ? "updated" : "added"}.'),
-      ));
       navigator.pop(true);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));

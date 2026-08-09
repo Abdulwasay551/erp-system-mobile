@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
+import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/tag_pill.dart';
 import '../widgets/confirm_delete_dialog.dart';
@@ -279,15 +280,24 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     setState(() => _paying = true);
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      await widget.api.request('/api/sales/payments/', method: 'POST', body: {
-        'customer': widget.invoice['customer'],
-        'invoice': widget.invoice['id'],
-        'amount': _amountController.text,
-        'method': _method,
-        'payment_date': DateTime.now().toIso8601String().substring(0, 10),
-      });
-      messenger.showSnackBar(const SnackBar(content: Text('Payment recorded.')));
+      final result = await widget.api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'record_payment',
+        path: '/api/sales/payments/',
+        body: {
+          'customer': widget.invoice['customer'],
+          'invoice': widget.invoice['id'],
+          'amount': _amountController.text,
+          'method': _method,
+          'payment_date': DateTime.now().toIso8601String().substring(0, 10),
+        },
+        summary: 'Payment - Rs. ${_amountController.text} - ${widget.invoice['invoice_number']}',
+      );
+      messenger.showSnackBar(SnackBar(
+        content: Text(result.queued ? 'Payment saved offline - will sync automatically.' : 'Payment recorded.'),
+      ));
       widget.onChanged();
       navigator.pop();
     } on ApiException catch (e) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/confirm_delete_dialog.dart';
 
 const _categories = [
@@ -141,19 +142,31 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       ),
     );
     if (saved != true) return;
+    if (!mounted) return;
     if (amountController.text.trim().isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter an amount.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter an amount.')));
       return;
     }
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      await _api.request('/api/accounting/expenses/', method: 'POST', body: {
-        'category': category,
-        'description': descriptionController.text,
-        'amount': amountController.text,
-        'payment_method': 'cash',
-        'expense_date': DateTime.now().toIso8601String().substring(0, 10),
-      });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense recorded.')));
+      final result = await _api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'create_expense',
+        path: '/api/accounting/expenses/',
+        body: {
+          'category': category,
+          'description': descriptionController.text,
+          'amount': amountController.text,
+          'payment_method': 'cash',
+          'expense_date': DateTime.now().toIso8601String().substring(0, 10),
+        },
+        summary: 'Expense - Rs. ${amountController.text} - $category',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.queued ? 'Expense saved offline - will sync automatically.' : 'Expense recorded.'),
+        ));
+      }
       _load();
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

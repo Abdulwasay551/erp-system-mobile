@@ -212,25 +212,35 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
       return;
     }
     setState(() => _creating = true);
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      await _api.request('/api/purchase/vendor-invoice/', method: 'POST', body: {
-        'supplier_id': _selectedSupplier!['id'],
-        'items': _lines
-            .map((l) => {
-                  'product_id': l['product_id'],
-                  'unit_price': (l['unit_price'] as TextEditingController).text,
-                  'expected_quantity': (l['expected_quantity'] as TextEditingController).text,
-                  'discounts': (l['discounts'] as List<DiscountEntry>)
-                      .where((d) => (double.tryParse(d.value) ?? 0) > 0)
-                      .map((d) => d.toJson())
-                      .toList(),
-                })
-            .toList(),
-        if (_headerDiscountController.text.isNotEmpty) 'discount_amount': _headerDiscountController.text,
-      });
+      final result = await _api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'create_vendor_invoice',
+        path: '/api/purchase/vendor-invoice/',
+        body: {
+          'supplier_id': _selectedSupplier!['id'],
+          'items': _lines
+              .map((l) => {
+                    'product_id': l['product_id'],
+                    'unit_price': (l['unit_price'] as TextEditingController).text,
+                    'expected_quantity': (l['expected_quantity'] as TextEditingController).text,
+                    'discounts': (l['discounts'] as List<DiscountEntry>)
+                        .where((d) => (double.tryParse(d.value) ?? 0) > 0)
+                        .map((d) => d.toJson())
+                        .toList(),
+                  })
+              .toList(),
+          if (_headerDiscountController.text.isNotEmpty) 'discount_amount': _headerDiscountController.text,
+        },
+        summary: 'Vendor invoice - ${_selectedSupplier!['name']} - ${_lines.length} item${_lines.length == 1 ? '' : 's'}',
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Vendor invoice recorded - now pending receipt.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.queued
+              ? 'Vendor invoice saved offline - will sync automatically.'
+              : 'Vendor invoice recorded - now pending receipt.'),
+        ));
         Navigator.pop(context, true);
       }
     } on ApiException catch (e) {
