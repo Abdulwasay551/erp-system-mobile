@@ -7,6 +7,7 @@ import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/tag_pill.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/offline_banner.dart';
 import 'invoice_edit_screen.dart';
 
 const _statusOptions = [
@@ -42,6 +43,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   int _page = 1;
   String? _status;
   String _ordering = '-invoice_date';
+  DateTime? _cachedAt;
 
   ApiClient get _api => context.read<AuthService>().api;
 
@@ -66,14 +68,21 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       if (_status != null) 'status': _status!,
     };
     final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final data = await _api.request('/api/sales/invoices/?$qs') as Map<String, dynamic>;
-      final results = data['results'] as List<dynamic>;
-      if (mounted) {
-        setState(() {
-          _invoices = reset ? results : [..._invoices, ...results];
-          _hasMore = data['next'] != null;
-        });
+      final cached = await _api.requestCached('/api/sales/invoices/?$qs', isOnline: online);
+      if (cached == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load invoices.')));
+      } else {
+        final data = cached.data as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>;
+        if (mounted) {
+          setState(() {
+            _invoices = reset ? results : [..._invoices, ...results];
+            _hasMore = data['next'] != null;
+            _cachedAt = cached.fromCache ? cached.cachedAt : null;
+          });
+        }
       }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -106,6 +115,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     return Scaffold(
       body: Column(
         children: [
+          if (_cachedAt != null) OfflineDataBanner(cachedAt: _cachedAt!),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Row(

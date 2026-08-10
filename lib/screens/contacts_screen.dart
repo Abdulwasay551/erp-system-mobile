@@ -7,6 +7,7 @@ import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/offline_banner.dart';
 import 'contact_form_screen.dart';
 
 const _customerSortOptions = [
@@ -91,6 +92,7 @@ class _ContactListState extends State<_ContactList> {
   int _page = 1;
   String? _supplierType;
   late String _ordering = widget.kind == ContactKind.customer ? _customerSortOptions.first.$1 : _supplierSortOptions.first.$1;
+  DateTime? _cachedAt;
 
   String get _endpoint => widget.kind == ContactKind.customer ? '/api/crm/customers/' : '/api/purchase/suppliers/';
   bool get _isCustomer => widget.kind == ContactKind.customer;
@@ -119,14 +121,24 @@ class _ContactListState extends State<_ContactList> {
       if (!_isCustomer && _supplierType != null) 'supplier_type': _supplierType!,
     };
     final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final data = await _api.request('$_endpoint?$qs') as Map<String, dynamic>;
-      final results = data['results'] as List<dynamic>;
-      if (mounted) {
-        setState(() {
-          _items = reset ? results : [..._items, ...results];
-          _hasMore = data['next'] != null;
-        });
+      final cached = await _api.requestCached('$_endpoint?$qs', isOnline: online);
+      if (cached == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Failed to load ${_isCustomer ? "customers" : "suppliers"}.')));
+        }
+      } else {
+        final data = cached.data as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>;
+        if (mounted) {
+          setState(() {
+            _items = reset ? results : [..._items, ...results];
+            _hasMore = data['next'] != null;
+            _cachedAt = cached.fromCache ? cached.cachedAt : null;
+          });
+        }
       }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -343,6 +355,7 @@ class _ContactListState extends State<_ContactList> {
       ),
       body: Column(
         children: [
+          if (_cachedAt != null) OfflineDataBanner(cachedAt: _cachedAt!),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: TextField(

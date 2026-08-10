@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/offline_banner.dart';
 
 const _categories = [
   ('rent', 'Rent'),
@@ -41,6 +42,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   int _page = 1;
   String? _category;
   String _ordering = '-expense_date';
+  DateTime? _cachedAt;
 
   ApiClient get _api => context.read<AuthService>().api;
 
@@ -66,16 +68,27 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       if (_category != null) 'category': _category!,
     };
     final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final expenses = await _api.request('/api/accounting/expenses/?$qs') as Map<String, dynamic>;
-      final summary = await _api.request('/api/accounting/expenses/summary/?month=$month');
-      final results = expenses['results'] as List<dynamic>;
-      if (mounted) {
-        setState(() {
-          _expenses = reset ? results : [..._expenses, ...results];
-          _hasMore = expenses['next'] != null;
-          _summary = summary as Map<String, dynamic>;
-        });
+      final expensesCached = await _api.requestCached('/api/accounting/expenses/?$qs', isOnline: online);
+      final summaryCached = await _api.requestCached(
+        '/api/accounting/expenses/summary/?month=$month',
+        isOnline: online,
+        cacheKey: 'expenses_summary_$month',
+      );
+      if (expensesCached == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load expenses.')));
+      } else {
+        final expenses = expensesCached.data as Map<String, dynamic>;
+        final results = expenses['results'] as List<dynamic>;
+        if (mounted) {
+          setState(() {
+            _expenses = reset ? results : [..._expenses, ...results];
+            _hasMore = expenses['next'] != null;
+            _summary = summaryCached?.data as Map<String, dynamic>?;
+            _cachedAt = expensesCached.fromCache ? expensesCached.cachedAt : null;
+          });
+        }
       }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -185,6 +198,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (_cachedAt != null) ...[
+                    OfflineDataBanner(cachedAt: _cachedAt!, margin: EdgeInsets.zero),
+                    const SizedBox(height: 12),
+                  ],
                   if (_summary != null)
                     Card(
                       color: Theme.of(context).colorScheme.primaryContainer,

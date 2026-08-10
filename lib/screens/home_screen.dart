@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/theme_service.dart';
+import '../theme/app_semantic_colors.dart';
 import 'dashboard_screen.dart';
 import 'sales_screen.dart';
 import 'receiving_screen.dart';
@@ -12,6 +14,7 @@ import 'search_screen.dart';
 import 'recycle_bin_screen.dart';
 import 'item_lookup_screen.dart';
 import 'staff_screen.dart';
+import 'sync_status_screen.dart';
 import '../services/connectivity_service.dart';
 import '../services/reference_sync_service.dart';
 import '../services/sync_service.dart';
@@ -27,6 +30,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
+  int _pendingSyncCount = 0;
+  Timer? _pendingCountTimer;
 
   static const _baseTitles = ['Dashboard', 'Sales', 'Receiving', 'Contacts', 'Expenses'];
 
@@ -37,8 +42,25 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _maybeSyncReferenceData();
     final api = context.read<AuthService>().api;
-    SyncService(api).drain();
-    context.read<ConnectivityService>().onRegained = () => SyncService(api).drain();
+    _refreshPendingCount();
+    SyncService(api).drain().then((_) => _refreshPendingCount());
+    context.read<ConnectivityService>().onRegained =
+        () => SyncService(api).drain().then((_) => _refreshPendingCount());
+    // Cheap local-only COUNT query - catches the queue count changing on its own
+    // (e.g. a Tier 2 write queued from another tab) without needing every write site to
+    // remember to notify HomeScreen.
+    _pendingCountTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshPendingCount());
+  }
+
+  @override
+  void dispose() {
+    _pendingCountTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshPendingCount() async {
+    final count = await SyncService.pendingCount();
+    if (mounted) setState(() => _pendingSyncCount = count);
   }
 
   Future<void> _maybeSyncReferenceData() async {
@@ -97,10 +119,28 @@ class _HomeScreenState extends State<HomeScreen> {
       if (isAdmin) const AccountingScreen(),
     ];
     if (_index >= titles.length) _index = 0;
+    final online = context.watch<ConnectivityService>().isOnline;
     return Scaffold(
       appBar: AppBar(
         title: Text(titles[_index]),
         actions: [
+          if (!online || _pendingSyncCount > 0)
+            IconButton(
+              icon: Badge(
+                label: _pendingSyncCount > 0 ? Text('$_pendingSyncCount') : null,
+                isLabelVisible: _pendingSyncCount > 0,
+                backgroundColor: context.semanticColors.warning,
+                child: Icon(
+                  online ? Icons.sync_problem_outlined : Icons.cloud_off_outlined,
+                  color: context.semanticColors.warning,
+                ),
+              ),
+              tooltip: online ? 'Sync pending' : 'Offline',
+              onPressed: () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (context) => const SyncStatusScreen()));
+                _refreshPendingCount();
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SearchScreen())),
@@ -112,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StaffScreen())),
             ),
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'logout') {
                 context.read<AuthService>().logout();
               } else if (value == 'appearance') {
@@ -121,6 +161,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const RecycleBinScreen()));
               } else if (value == 'item_lookup') {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ItemLookupScreen()));
+              } else if (value == 'sync_status') {
+                await Navigator.push(context, MaterialPageRoute(builder: (context) => const SyncStatusScreen()));
+                _refreshPendingCount();
               }
             },
             itemBuilder: (context) => [
@@ -145,6 +188,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListTile(
                   leading: Icon(Icons.qr_code_scanner_outlined),
                   title: Text('Item Lookup'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'sync_status',
+                child: ListTile(
+                  leading: const Icon(Icons.sync_outlined),
+                  title: const Text('Sync Status'),
+                  trailing: _pendingSyncCount > 0
+                      ? Badge(label: Text('$_pendingSyncCount'), backgroundColor: context.semanticColors.warning)
+                      : null,
                   contentPadding: EdgeInsets.zero,
                 ),
               ),

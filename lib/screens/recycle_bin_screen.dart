@@ -52,8 +52,8 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
     try {
       final data = await _api.request('/api/core/recycle-bin/') as Map<String, dynamic>;
       if (mounted) setState(() => _items = data['results'] as List<dynamic>);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -70,8 +70,8 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item['repr']} restored.')));
       }
       _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _busyKey = null);
     }
@@ -104,8 +104,8 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item['repr']} permanently deleted.')));
       }
       _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _busyKey = null);
     }
@@ -157,8 +157,8 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
             .showSnackBar(SnackBar(content: Text('Permanently deleted ${result['purged_count']} item(s).')));
       }
       _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _emptying = false);
     }

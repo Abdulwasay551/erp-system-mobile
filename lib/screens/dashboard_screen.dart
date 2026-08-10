@@ -2,8 +2,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/logo_loader.dart';
+import '../widgets/offline_banner.dart';
 
 class DashboardScreen extends StatefulWidget {
   /// Switches the parent HomeScreen's bottom-nav tab - lets a stat card jump
@@ -36,6 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _stats;
   List<dynamic>? _trendDays;
   String? _error;
+  DateTime? _cachedAt;
 
   @override
   void initState() {
@@ -45,15 +48,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     final api = context.read<AuthService>().api;
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final data = await api.request('/api/analytics/dashboard/');
-      if (mounted) setState(() => _stats = data as Map<String, dynamic>);
+      final cached = await api.requestCached('/api/analytics/dashboard/', isOnline: online);
+      if (cached == null) {
+        if (mounted) setState(() => _error = 'Failed to load dashboard.');
+      } else if (mounted) {
+        setState(() {
+          _stats = cached.data as Map<String, dynamic>;
+          _cachedAt = cached.fromCache ? cached.cachedAt : null;
+          _error = null;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = 'Failed to load dashboard.');
     }
     try {
-      final report = await api.request('/api/analytics/profit-report/?days=14') as Map<String, dynamic>;
-      if (mounted) setState(() => _trendDays = report['days'] as List<dynamic>?);
+      final cached = await api.requestCached(
+        '/api/analytics/profit-report/?days=14',
+        isOnline: online,
+        cacheKey: 'dashboard_trend_14',
+      );
+      if (mounted && cached != null) {
+        setState(() => _trendDays = (cached.data as Map<String, dynamic>)['days'] as List<dynamic>?);
+      }
     } catch (_) {
       // Chart is a nice-to-have on the dashboard - a failure here shouldn't block the
       // stat cards above, which already have their own error handling.
@@ -129,6 +147,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onRefresh: _load,
       child: CustomScrollView(
         slivers: [
+          if (_cachedAt != null)
+            SliverToBoxAdapter(child: OfflineDataBanner(cachedAt: _cachedAt!)),
           if (_trendDays != null && _trendDays!.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(

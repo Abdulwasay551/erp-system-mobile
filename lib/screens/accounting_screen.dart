@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/offline_banner.dart';
 import 'expenses_screen.dart';
 
 const _periods = [
@@ -25,6 +27,7 @@ class _AccountingScreenState extends State<AccountingScreen> {
   Map<String, dynamic>? _report;
   bool _loading = true;
   String? _error;
+  DateTime? _cachedAt;
 
   ApiClient get _api => context.read<AuthService>().api;
 
@@ -39,9 +42,21 @@ class _AccountingScreenState extends State<AccountingScreen> {
       _loading = true;
       _error = null;
     });
+    final online = context.read<ConnectivityService>().isOnline;
     try {
-      final data = await _api.request('/api/analytics/profit-report/?days=$_days');
-      if (mounted) setState(() => _report = data as Map<String, dynamic>);
+      final cached = await _api.requestCached(
+        '/api/analytics/profit-report/?days=$_days',
+        isOnline: online,
+        cacheKey: 'profit_report_$_days',
+      );
+      if (cached == null) {
+        if (mounted) setState(() => _error = 'Failed to load report.');
+      } else if (mounted) {
+        setState(() {
+          _report = cached.data as Map<String, dynamic>;
+          _cachedAt = cached.fromCache ? cached.cachedAt : null;
+        });
+      }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -267,6 +282,10 @@ class _AccountingScreenState extends State<AccountingScreen> {
                   : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
+                        if (_cachedAt != null) ...[
+                          OfflineDataBanner(cachedAt: _cachedAt!, margin: EdgeInsets.zero),
+                          const SizedBox(height: 12),
+                        ],
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(

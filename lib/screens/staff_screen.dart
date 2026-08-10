@@ -77,8 +77,8 @@ class _StaffScreenState extends State<StaffScreen> {
           _hasMore = data['next'] != null;
         });
       }
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = _loadingMore = false);
     }
@@ -109,8 +109,8 @@ class _StaffScreenState extends State<StaffScreen> {
       await _api.request('/api/auth/users/${u['id']}/', method: 'DELETE');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Staff account deleted.')));
       _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 

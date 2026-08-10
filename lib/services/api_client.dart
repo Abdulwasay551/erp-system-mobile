@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:sqflite/sqflite.dart';
 import 'offline_db.dart';
 
 /// Points at the deployed backend so this build works for real testers on
@@ -16,6 +17,24 @@ class ApiException implements Exception {
   ApiException(this.statusCode, this.message);
   @override
   String toString() => message;
+}
+
+/// A message safe to show for any request failure. A real server rejection
+/// ([ApiException]) surfaces its own message; anything else (SocketException,
+/// TimeoutException, etc. - a network-level failure) gets a generic "needs internet"
+/// message. Used by the Tier 3/online-only screens (receiving, invoice/bill edit,
+/// staff, recycle bin) so going offline shows a clear explanation instead of a raw
+/// exception or a silently-empty screen.
+String friendlyError(Object e) => e is ApiException ? e.message : "This needs an internet connection.";
+
+/// Result of [ApiClient.requestCached]: [data] is always the freshest available, either
+/// just-fetched ([fromCache] false) or the last successful fetch for this key
+/// ([fromCache] true, [cachedAt] is when that fetch happened).
+class CachedResult {
+  final dynamic data;
+  final bool fromCache;
+  final DateTime cachedAt;
+  CachedResult({required this.data, required this.fromCache, required this.cachedAt});
 }
 
 /// Result of [ApiClient.enqueueOrSend]: either the write went through immediately
@@ -169,6 +188,38 @@ class ApiClient {
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
     return EnqueueResult(queued: true);
+  }
+
+  /// GET wrapper for offline-browsable screens (Dashboard, Invoices, Analytics,
+  /// Expenses, Contacts): fetches live and refreshes the cache when online; falls back
+  /// to the last cached response for this [path]/[cacheKey] when offline or when the
+  /// live fetch fails for any reason. Returns null only if there's no cached data at
+  /// all yet (e.g. this screen has never loaded successfully before) - callers should
+  /// keep their existing "failed to load" state for that case.
+  Future<CachedResult?> requestCached(String path, {required bool isOnline, String? cacheKey}) async {
+    final key = cacheKey ?? path;
+    if (isOnline) {
+      try {
+        final data = await request(path);
+        final db = await OfflineDb.instance;
+        await db.insert(
+          'cached_responses',
+          {'cache_key': key, 'json_body': jsonEncode(data), 'cached_at': DateTime.now().millisecondsSinceEpoch},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        return CachedResult(data: data, fromCache: false, cachedAt: DateTime.now());
+      } catch (_) {
+        // fall through to whatever's cached
+      }
+    }
+    final db = await OfflineDb.instance;
+    final rows = await db.query('cached_responses', where: 'cache_key = ?', whereArgs: [key], limit: 1);
+    if (rows.isEmpty) return null;
+    return CachedResult(
+      data: jsonDecode(rows.first['json_body'] as String),
+      fromCache: true,
+      cachedAt: DateTime.fromMillisecondsSinceEpoch(rows.first['cached_at'] as int),
+    );
   }
 
   /// Fetches a binary (PDF) endpoint with the auth header attached - separate from

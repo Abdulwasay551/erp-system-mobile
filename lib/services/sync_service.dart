@@ -78,16 +78,28 @@ class SyncService {
           break;
         }
       }
-
-      await _purgeOldSynced(db);
     } finally {
       _draining = false;
     }
   }
 
-  Future<void> _purgeOldSynced(Database db) async {
-    final cutoff = DateTime.now().subtract(const Duration(days: 2)).millisecondsSinceEpoch;
-    await db.delete('sync_queue', where: "status = 'synced' AND synced_at < ?", whereArgs: [cutoff]);
+  /// Manual cleanup only (Sync Status screen's "Sweep Cache" button) - deliberately not
+  /// run automatically on every drain so the user can see and control when local storage
+  /// gets cleared, rather than it happening silently in the background. Safe by
+  /// construction either way: this only ever deletes [sync_queue] rows already marked
+  /// 'synced' (the server already confirmed them, so the local record is redundant) and
+  /// rows in the separate read-only [cached_responses] table (Dashboard/Invoices/etc.
+  /// display cache) - it never touches pending/syncing/failed queue rows, so a write
+  /// that hasn't synced yet can't be lost by running this. Returns counts for the
+  /// confirmation snackbar.
+  static Future<({int queueRows, int cacheRows})> sweepCache() async {
+    final db = await OfflineDb.instance;
+    final queueCutoff = DateTime.now().subtract(const Duration(days: 2)).millisecondsSinceEpoch;
+    final queueRows =
+        await db.delete('sync_queue', where: "status = 'synced' AND synced_at < ?", whereArgs: [queueCutoff]);
+    final cacheCutoff = DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch;
+    final cacheRows = await db.delete('cached_responses', where: 'cached_at < ?', whereArgs: [cacheCutoff]);
+    return (queueRows: queueRows, cacheRows: cacheRows);
   }
 
   static Future<int> pendingCount() async {
@@ -96,5 +108,32 @@ class SyncService {
       "SELECT COUNT(*) as c FROM sync_queue WHERE status IN ('pending', 'syncing', 'failed')",
     );
     return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  /// Queue rows still needing attention (pending/syncing/failed), oldest first - powers
+  /// the "Active" section of the Sync Status screen.
+  static Future<List<Map<String, dynamic>>> activeItems() async {
+    final db = await OfflineDb.instance;
+    return db.query('sync_queue', where: "status IN ('pending', 'syncing', 'failed')", orderBy: 'created_at ASC');
+  }
+
+  /// A capped, most-recent-first window into successfully synced items - full cleanup of
+  /// old synced rows happens via the manual [sweepCache] button, not automatically.
+  static Future<List<Map<String, dynamic>>> recentlySynced({int limit = 20}) async {
+    final db = await OfflineDb.instance;
+    return db.query('sync_queue', where: "status = 'synced'", orderBy: 'synced_at DESC', limit: limit);
+  }
+
+  /// Resets a failed item back to pending so the next [drain] picks it up again.
+  static Future<void> retry(int id) async {
+    final db = await OfflineDb.instance;
+    await db.update('sync_queue', {'status': 'pending', 'error_message': null}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Drops a failed item permanently - the user has decided the write it represents
+  /// (e.g. a sale for a tracked unit someone else already sold) shouldn't be retried.
+  static Future<void> discard(int id) async {
+    final db = await OfflineDb.instance;
+    await db.delete('sync_queue', where: 'id = ?', whereArgs: [id]);
   }
 }

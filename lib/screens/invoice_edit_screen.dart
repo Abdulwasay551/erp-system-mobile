@@ -83,8 +83,8 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
                     .toList(),
               )));
       });
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -142,8 +142,8 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice updated.')));
         Navigator.pop(context, true);
       }
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

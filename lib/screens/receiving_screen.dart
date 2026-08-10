@@ -20,6 +20,7 @@ class ReceivingScreen extends StatefulWidget {
 class _ReceivingScreenState extends State<ReceivingScreen> {
   List<dynamic> _pending = [];
   bool _loading = true;
+  String? _error;
 
   ApiClient get _api => context.read<AuthService>().api;
 
@@ -30,12 +31,15 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final data = await _api.request('/api/purchase/bills/pending-receipt/');
       if (mounted) setState(() => _pending = data as List<dynamic>);
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -64,8 +68,8 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
       await _api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
       _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
@@ -80,11 +84,20 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _pending.isEmpty
-              ? const Center(child: Text('No pending vendor invoices.'))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _error != null
+                  ? ListView(children: [Padding(padding: const EdgeInsets.all(24), child: Text(_error!))])
+                  : _pending.isEmpty
+                      ? ListView(
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.only(top: 80),
+                              child: Center(child: Text('No pending vendor invoices.')),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
                     padding: const EdgeInsets.all(12),
                     itemCount: _pending.length,
                     itemBuilder: (context, i) {
@@ -436,8 +449,8 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
             .showSnackBar(SnackBar(content: Text('${widget.bill['bill_number']} marked received.')));
         Navigator.pop(context, true);
       }
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
