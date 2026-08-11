@@ -9,15 +9,40 @@ import '../widgets/discount_editor.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_search.dart';
 import 'bill_edit_screen.dart';
+import 'barcode_scanner_screen.dart';
 
-class ReceivingScreen extends StatefulWidget {
+/// Bottom-nav "Receiving" tab - houses both the pending-receipt worklist and a
+/// browsable history of every vendor bill ever recorded, mirroring how the web app
+/// nests "Pending Receipts" + "All Vendor Bills" under one Inventory/Receiving area.
+/// No Scaffold/AppBar of its own - HomeScreen already provides one.
+class ReceivingScreen extends StatelessWidget {
   const ReceivingScreen({super.key});
 
   @override
-  State<ReceivingScreen> createState() => _ReceivingScreenState();
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          Material(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: const TabBar(tabs: [Tab(text: 'Pending'), Tab(text: 'All Invoices')]),
+          ),
+          const Expanded(child: TabBarView(children: [_PendingReceiptsTab(), _AllBillsTab()])),
+        ],
+      ),
+    );
+  }
 }
 
-class _ReceivingScreenState extends State<ReceivingScreen> {
+class _PendingReceiptsTab extends StatefulWidget {
+  const _PendingReceiptsTab();
+
+  @override
+  State<_PendingReceiptsTab> createState() => _PendingReceiptsTabState();
+}
+
+class _PendingReceiptsTabState extends State<_PendingReceiptsTab> {
   List<dynamic> _pending = [];
   bool _loading = true;
   String? _error;
@@ -147,6 +172,280 @@ class _ReceivingScreenState extends State<ReceivingScreen> {
                     },
                   ),
                 ),
+    );
+  }
+}
+
+class _AllBillsTab extends StatefulWidget {
+  const _AllBillsTab();
+
+  @override
+  State<_AllBillsTab> createState() => _AllBillsTabState();
+}
+
+class _AllBillsTabState extends State<_AllBillsTab> {
+  List<dynamic> _bills = [];
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _page = 1;
+  String? _error;
+
+  ApiClient get _api => context.read<AuthService>().api;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({bool reset = true}) async {
+    setState(() {
+      if (reset) {
+        _page = 1;
+        _loading = true;
+      } else {
+        _loadingMore = true;
+      }
+      _error = null;
+    });
+    try {
+      final data = await _api.request('/api/purchase/bills/?page=$_page&ordering=-bill_date') as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>;
+      if (mounted) {
+        setState(() {
+          _bills = reset ? results : [..._bills, ...results];
+          _hasMore = data['next'] != null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = _loadingMore = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore || _loadingMore) return;
+    _page++;
+    await _load(reset: false);
+  }
+
+  Future<void> _openBill(Map<String, dynamic> bill) async {
+    if (bill['goods_received'] == true) {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => _ReceivedBillDetailSheet(bill: bill, api: _api, onChanged: _load),
+      );
+      return;
+    }
+    final received = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => _ReceiveBillScreen(bill: bill)),
+    );
+    if (received == true) _load();
+  }
+
+  Future<void> _editBill(Map<String, dynamic> bill) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => BillEditScreen(bill: bill)),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _deleteBill(Map<String, dynamic> bill) async {
+    final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
+    if (!confirmed) return;
+    try {
+      await _api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = context.watch<AuthService>().isAdmin;
+    return Scaffold(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _error != null
+                  ? ListView(children: [Padding(padding: const EdgeInsets.all(24), child: Text(_error!))])
+                  : _bills.isEmpty
+                      ? ListView(
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.only(top: 80),
+                              child: Center(child: Text('No vendor bills recorded yet.')),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _bills.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (context, i) {
+                            if (i == _bills.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: _loadingMore
+                                      ? const CircularProgressIndicator()
+                                      : TextButton(onPressed: _loadMore, child: const Text('Load more')),
+                                ),
+                              );
+                            }
+                            final bill = _bills[i] as Map<String, dynamic>;
+                            final received = bill['goods_received'] == true;
+                            return Card(
+                              child: ListTile(
+                                title: Text('${bill['bill_number']} · ${bill['supplier_name']}'),
+                                subtitle: Text('${bill['bill_date']} · Rs. ${bill['total_amount']}'),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Chip(
+                                      label: Text(received ? 'Received' : 'Pending'),
+                                      backgroundColor: received
+                                          ? Colors.green.withValues(alpha: 0.15)
+                                          : Colors.orange.withValues(alpha: 0.15),
+                                      labelStyle:
+                                          TextStyle(color: received ? Colors.green.shade800 : Colors.orange.shade800),
+                                      side: BorderSide.none,
+                                    ),
+                                    if (isAdmin)
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined, size: 20),
+                                        tooltip: 'Edit',
+                                        onPressed: () => _editBill(bill),
+                                      ),
+                                    if (isAdmin) DeleteIconButton(onPressed: () => _deleteBill(bill)),
+                                  ],
+                                ),
+                                onTap: () => _openBill(bill),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+    );
+  }
+}
+
+class _ReceivedBillDetailSheet extends StatefulWidget {
+  final Map<String, dynamic> bill;
+  final ApiClient api;
+  final VoidCallback onChanged;
+  const _ReceivedBillDetailSheet({required this.bill, required this.api, required this.onChanged});
+
+  @override
+  State<_ReceivedBillDetailSheet> createState() => _ReceivedBillDetailSheetState();
+}
+
+class _ReceivedBillDetailSheetState extends State<_ReceivedBillDetailSheet> {
+  bool _downloadingPdf = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bill = widget.bill;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(bill['bill_number'] as String, style: Theme.of(context).textTheme.titleLarge),
+          Text(bill['supplier_name'] as String, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Date'),
+              Text(bill['bill_date'].toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total'),
+              Text('Rs. ${bill['total_amount']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _downloadingPdf
+                ? null
+                : () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    setState(() => _downloadingPdf = true);
+                    try {
+                      await downloadAndOpenPdf(
+                        widget.api,
+                        '/api/purchase/bills/${bill['id']}/pdf/',
+                        '${bill['bill_number']}-receiving.pdf',
+                      );
+                    } catch (e) {
+                      messenger.showSnackBar(SnackBar(content: Text('$e')));
+                    } finally {
+                      if (mounted) setState(() => _downloadingPdf = false);
+                    }
+                  },
+            icon: const Icon(Icons.print_outlined),
+            label: Text(_downloadingPdf ? 'Preparing...' : 'Print'),
+          ),
+          if (context.read<AuthService>().isAdmin) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final navigator = Navigator.of(context);
+                      final changed = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(builder: (context) => BillEditScreen(bill: bill)),
+                      );
+                      if (changed == true) {
+                        widget.onChanged();
+                        navigator.pop();
+                      }
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
+                      if (!confirmed) return;
+                      try {
+                        await widget.api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
+                        messenger.showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
+                        widget.onChanged();
+                        navigator.pop();
+                      } catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+                      }
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Delete'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -385,6 +684,8 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
   }
 }
 
+bool _isValidImei(String code) => code.length == 15 && RegExp(r'^\d+$').hasMatch(code);
+
 class _ReceiveBillScreen extends StatefulWidget {
   final Map<String, dynamic> bill;
   const _ReceiveBillScreen({required this.bill});
@@ -394,9 +695,13 @@ class _ReceiveBillScreen extends StatefulWidget {
 }
 
 class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
-  late final Map<int, TextEditingController> _codeControllers;
-  late final Map<int, TextEditingController> _qtyControllers;
+  final Map<int, List<String>> _scannedCodes = {};
+  final Map<int, TextEditingController> _manualControllers = {};
+  final Map<int, TextEditingController> _qtyControllers = {};
+  final Map<int, int> _remainingByItem = {};
+  Map<String, dynamic>? _billDetail;
   int? _warehouseId;
+  bool _loadingDetail = true;
   bool _submitting = false;
 
   ApiClient get _api => context.read<AuthService>().api;
@@ -404,10 +709,49 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
   @override
   void initState() {
     super.initState();
-    final items = (widget.bill['items'] as List).cast<Map<String, dynamic>>();
-    _codeControllers = {for (final it in items) it['id'] as int: TextEditingController()};
-    _qtyControllers = {for (final it in items) it['id'] as int: TextEditingController()};
+    _loadDetail();
     _loadWarehouse();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _manualControllers.values) {
+      c.dispose();
+    }
+    for (final c in _qtyControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  // Fetched fresh rather than trusting widget.bill (which may be a stale list-page
+  // snapshot) - another device could be receiving the same bill concurrently, so the
+  // remaining-to-receive count per line must come from the server at the moment this
+  // screen opens.
+  Future<void> _loadDetail() async {
+    setState(() => _loadingDetail = true);
+    try {
+      final data = await _api.request('/api/purchase/bills/${widget.bill['id']}/') as Map<String, dynamic>;
+      final items = (data['items'] as List).cast<Map<String, dynamic>>();
+      if (mounted) {
+        setState(() {
+          _billDetail = data;
+          for (final it in items) {
+            final id = it['id'] as int;
+            final qty = double.tryParse(it['quantity'].toString()) ?? 0;
+            final received = double.tryParse(it['received_quantity'].toString()) ?? 0;
+            _remainingByItem[id] = (qty - received).round();
+            _scannedCodes.putIfAbsent(id, () => []);
+            _manualControllers.putIfAbsent(id, () => TextEditingController());
+            _qtyControllers.putIfAbsent(id, () => TextEditingController());
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _loadingDetail = false);
+    }
   }
 
   Future<void> _loadWarehouse() async {
@@ -418,6 +762,67 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
     } catch (_) {}
   }
 
+  Future<void> _showInvalidImeiDialog(String code) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Invalid IMEI'),
+        content: Text(
+          '"$code" is not a valid IMEI.\n\nAn IMEI must be exactly 15 digits (numbers only). '
+          'This code was rejected - press OK, then scan again.',
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addCode(int itemId, String trackingType, String rawCode) async {
+    final code = rawCode.trim();
+    if (code.isEmpty) return;
+    final remaining = _remainingByItem[itemId] ?? 0;
+    final scanned = _scannedCodes[itemId] ?? [];
+
+    if (scanned.length >= remaining) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Already scanned the expected quantity for this item.')));
+      return;
+    }
+    if (trackingType == 'imei' && !_isValidImei(code)) {
+      await _showInvalidImeiDialog(code);
+      return;
+    }
+    if (scanned.contains(code)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('That code was already scanned for this item.')));
+      return;
+    }
+    setState(() => _scannedCodes[itemId] = [...scanned, code]);
+    _manualControllers[itemId]?.clear();
+  }
+
+  Future<void> _scanForItem(int itemId, String trackingType) async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+    );
+    if (code == null) return;
+    await _addCode(itemId, trackingType, code);
+  }
+
+  bool get _canSubmit {
+    final items = (_billDetail?['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    for (final it in items) {
+      final id = it['id'] as int;
+      if (it['tracking_type'] == 'none') continue;
+      final remaining = _remainingByItem[id] ?? 0;
+      if (remaining > 0 && (_scannedCodes[id]?.length ?? 0) != remaining) return false;
+    }
+    return true;
+  }
+
   Future<void> _submit() async {
     if (_warehouseId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No warehouse found.')));
@@ -425,19 +830,13 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
     }
     setState(() => _submitting = true);
     try {
-      final items = (widget.bill['items'] as List).cast<Map<String, dynamic>>();
+      final items = (_billDetail?['items'] as List).cast<Map<String, dynamic>>();
       final payload = items.map((item) {
         final id = item['id'] as int;
         if (item['tracking_type'] == 'none') {
           return {'bill_item_id': id, 'quantity': _qtyControllers[id]!.text.isEmpty ? '0' : _qtyControllers[id]!.text};
         }
-        final codes = _codeControllers[id]!
-            .text
-            .split('\n')
-            .map((c) => c.trim())
-            .where((c) => c.isNotEmpty)
-            .toList();
-        return {'bill_item_id': id, 'codes': codes};
+        return {'bill_item_id': id, 'codes': _scannedCodes[id] ?? []};
       }).toList();
 
       await _api.request('/api/purchase/bills/${widget.bill['id']}/receive-items/',
@@ -458,15 +857,37 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final items = (widget.bill['items'] as List).cast<Map<String, dynamic>>();
+    if (_loadingDetail || _billDetail == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.bill['bill_number'] as String)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final items = (_billDetail!['items'] as List).cast<Map<String, dynamic>>();
+    final alreadyReceived = _billDetail!['goods_received'] == true;
     return Scaffold(
       appBar: AppBar(title: Text(widget.bill['bill_number'] as String)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Chip(
+            avatar: Icon(
+              alreadyReceived ? Icons.check_circle : Icons.pending_outlined,
+              size: 18,
+              color: alreadyReceived ? Colors.green.shade800 : Colors.orange.shade800,
+            ),
+            label: Text(alreadyReceived ? 'Already fully received' : 'Pending receipt'),
+            backgroundColor:
+                alreadyReceived ? Colors.green.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
+            side: BorderSide.none,
+          ),
+          const SizedBox(height: 12),
           ...items.map((item) {
             final id = item['id'] as int;
             final trackingType = item['tracking_type'] as String;
+            final remaining = _remainingByItem[id] ?? 0;
+            final scanned = _scannedCodes[id] ?? [];
+            final fullyScanned = trackingType != 'none' && scanned.length >= remaining;
             return Card(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -475,27 +896,82 @@ class _ReceiveBillScreenState extends State<_ReceiveBillScreen> {
                   children: [
                     Text('${item['product_name']} (expected ${item['quantity']})',
                         style: const TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    if (trackingType == 'none')
+                    if (trackingType == 'none') ...[
+                      const SizedBox(height: 8),
                       TextField(
                         controller: _qtyControllers[id],
                         decoration: const InputDecoration(labelText: 'Quantity received'),
                         keyboardType: TextInputType.number,
-                      )
-                    else
-                      TextField(
-                        controller: _codeControllers[id],
-                        maxLines: 3,
-                        decoration: InputDecoration(labelText: 'Scan/paste $trackingType codes, one per line'),
                       ),
+                    ] else ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        remaining == 0
+                            ? 'Nothing left to receive for this line.'
+                            : '${scanned.length} of $remaining scanned',
+                        style: TextStyle(
+                          color: fullyScanned ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: fullyScanned ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                      if (scanned.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: scanned
+                              .map((code) => Chip(
+                                    label: Text(code, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                                    onDeleted: () => setState(() => _scannedCodes[id] = [...scanned]..remove(code)),
+                                  ))
+                              .toList(),
+                        ),
+                      ],
+                      if (!fullyScanned && remaining > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _manualControllers[id],
+                                decoration: InputDecoration(
+                                  labelText: trackingType == 'imei' ? 'Enter 15-digit IMEI' : 'Enter $trackingType',
+                                ),
+                                keyboardType:
+                                    trackingType == 'imei' ? TextInputType.number : TextInputType.text,
+                                onSubmitted: (v) => _addCode(id, trackingType, v),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              tooltip: 'Add',
+                              onPressed: () => _addCode(id, trackingType, _manualControllers[id]!.text),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.qr_code_scanner),
+                              tooltip: 'Scan with camera',
+                              onPressed: () => _scanForItem(id, trackingType),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
             );
           }),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          if (!_canSubmit)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Scan the exact expected quantity for every tracked item before this bill can be marked received.',
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ),
           FilledButton(
-            onPressed: _submitting ? null : _submit,
+            onPressed: (_submitting || !_canSubmit) ? null : _submit,
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
             child: _submitting ? const CircularProgressIndicator() : const Text('Receive & Mark Complete'),
           ),

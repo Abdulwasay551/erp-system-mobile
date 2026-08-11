@@ -182,7 +182,8 @@ class _ContactListState extends State<_ContactList> {
     final outstanding = double.tryParse(item['outstanding_balance']?.toString() ?? '0') ?? 0;
     List<dynamic> ledger = [];
     try {
-      ledger = await _api.request('$_endpoint$id/ledger/') as List<dynamic>;
+      final data = await _api.request('$_endpoint$id/ledger/');
+      ledger = data is List ? data : (data as Map<String, dynamic>)['results'] as List<dynamic>;
     } catch (_) {}
     if (!mounted) return;
     await showModalBottomSheet(
@@ -206,7 +207,9 @@ class _ContactListState extends State<_ContactList> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   FilledButton.icon(
                     icon: const Icon(Icons.payments_outlined),
@@ -216,7 +219,15 @@ class _ContactListState extends State<_ContactList> {
                       await _recordPayment(item, outstanding);
                     },
                   ),
-                  const SizedBox(width: 8),
+                  if (context.read<AuthService>().isAdmin)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('Debit/Credit'),
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _recordAdjustment(item);
+                      },
+                    ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.picture_as_pdf_outlined),
                     label: const Text('Ledger PDF'),
@@ -335,6 +346,112 @@ class _ContactListState extends State<_ContactList> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(result.queued ? 'Payment saved offline - will sync automatically.' : 'Payment recorded.'),
+        ));
+      }
+      _load(q: _searchController.text);
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _recordAdjustment(Map<String, dynamic> item) async {
+    final amountController = TextEditingController();
+    final referenceController = TextEditingController();
+    final descriptionController = TextEditingController();
+    var entryType = 'debit';
+    var method = 'cash';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Ledger Adjustment'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'debit', label: Text('Debit')),
+                    ButtonSegment(value: 'credit', label: Text('Credit')),
+                  ],
+                  selected: {entryType},
+                  onSelectionChanged: (selection) => setDialogState(() => entryType = selection.first),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: method,
+                  decoration: const InputDecoration(labelText: 'Payment Method'),
+                  items: const [
+                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                    DropdownMenuItem(value: 'bank_transfer', child: Text('Bank Transfer')),
+                    DropdownMenuItem(value: 'cheque', child: Text('Cheque')),
+                    DropdownMenuItem(value: 'credit_card', child: Text('Credit Card')),
+                    DropdownMenuItem(value: 'online', child: Text('Online Payment')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (v) => setDialogState(() => method = v ?? 'cash'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(labelText: 'Reference (optional)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(labelText: 'Description / Reason'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    if (amountController.text.trim().isEmpty || (double.tryParse(amountController.text) ?? 0) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount.')));
+      return;
+    }
+    if (descriptionController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A description/reason is required.')));
+      return;
+    }
+    try {
+      final endpoint = widget.kind == ContactKind.customer
+          ? '/api/crm/customer-ledger-adjustments/'
+          : '/api/purchase/supplier-ledger-adjustments/';
+      final body = {
+        widget.kind == ContactKind.customer ? 'customer' : 'supplier': item['id'],
+        'entry_type': entryType,
+        'amount': amountController.text,
+        'payment_method': method,
+        if (referenceController.text.trim().isNotEmpty) 'reference': referenceController.text.trim(),
+        'description': descriptionController.text.trim(),
+        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
+      };
+      final online = context.read<ConnectivityService>().isOnline;
+      final result = await _api.enqueueOrSend(
+        isOnline: online,
+        queueType: 'ledger_adjustment',
+        path: endpoint,
+        body: body,
+        summary: '${entryType == 'debit' ? 'Debit' : 'Credit'} - Rs. ${amountController.text} - ${item['name']}',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.queued ? 'Adjustment saved offline - will sync automatically.' : 'Adjustment recorded.'),
         ));
       }
       _load(q: _searchController.text);
