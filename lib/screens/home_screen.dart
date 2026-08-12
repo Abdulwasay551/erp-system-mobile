@@ -13,6 +13,7 @@ import 'accounting_screen.dart';
 import 'search_screen.dart';
 import 'recycle_bin_screen.dart';
 import 'item_lookup_screen.dart';
+import 'products_screen.dart';
 import 'staff_screen.dart';
 import 'sync_status_screen.dart';
 import '../services/connectivity_service.dart';
@@ -161,6 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const RecycleBinScreen()));
               } else if (value == 'item_lookup') {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ItemLookupScreen()));
+              } else if (value == 'products') {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ProductsScreen()));
               } else if (value == 'sync_status') {
                 await Navigator.push(context, MaterialPageRoute(builder: (context) => const SyncStatusScreen()));
                 _refreshPendingCount();
@@ -188,6 +191,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListTile(
                   leading: Icon(Icons.qr_code_scanner_outlined),
                   title: Text('Item Lookup'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'products',
+                child: ListTile(
+                  leading: Icon(Icons.inventory_2_outlined),
+                  title: Text('Products'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
