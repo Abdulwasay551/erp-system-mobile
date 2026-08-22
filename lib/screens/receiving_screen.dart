@@ -465,6 +465,7 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
   Map<String, dynamic>? _selectedSupplier;
   final List<Map<String, dynamic>> _lines = [];
   final _headerDiscountController = TextEditingController();
+  String _headerDiscountType = 'fixed';
   bool _creating = false;
 
   ApiClient get _api => context.read<AuthService>().api;
@@ -511,6 +512,9 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
         'unit_price': TextEditingController(),
         'expected_quantity': TextEditingController(text: product['tracking_method'] != 'none' ? '1' : ''),
         'discounts': <DiscountEntry>[],
+        'received_now': false,
+        'scanned_codes': <String>[],
+        'received_qty': TextEditingController(),
       });
       _productResults = [];
       _productSearchController.clear();
@@ -522,6 +526,19 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Select a supplier and add at least one product.')));
       return;
+    }
+    for (final l in _lines) {
+      if (l['received_now'] != true) continue;
+      final trackingMethod = l['tracking_method'] as String;
+      if (trackingMethod == 'none') continue;
+      final expected = int.tryParse((l['expected_quantity'] as TextEditingController).text) ?? 0;
+      final codes = l['scanned_codes'] as List<String>;
+      if (codes.length != expected) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${l['name']}: marked received now, but ${codes.length} code(s) entered - needs exactly $expected.'),
+        ));
+        return;
+      }
     }
     setState(() => _creating = true);
     final online = context.read<ConnectivityService>().isOnline;
@@ -541,9 +558,14 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
                         .where((d) => (double.tryParse(d.value) ?? 0) > 0)
                         .map((d) => d.toJson())
                         .toList(),
+                    if (l['received_now'] == true) 'received': true,
+                    if (l['received_now'] == true && l['tracking_method'] != 'none') 'codes': l['scanned_codes'],
+                    if (l['received_now'] == true && l['tracking_method'] == 'none')
+                      'received_quantity': (l['received_qty'] as TextEditingController).text,
                   })
               .toList(),
           if (_headerDiscountController.text.isNotEmpty) 'discount_amount': _headerDiscountController.text,
+          'discount_type': _headerDiscountType,
         },
         summary: 'Vendor invoice - ${_selectedSupplier!['name']} - ${_lines.length} item${_lines.length == 1 ? '' : 's'}',
       );
@@ -661,16 +683,57 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
                         ),
                       ],
                     ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('Already have these in hand - receive now'),
+                      value: l['received_now'] as bool,
+                      onChanged: (v) => setState(() => l['received_now'] = v ?? false),
+                    ),
+                    if (l['received_now'] == true)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: (l['tracking_method'] as String) == 'none'
+                            ? TextField(
+                                controller: l['received_qty'] as TextEditingController,
+                                decoration: const InputDecoration(labelText: 'Quantity received'),
+                                keyboardType: TextInputType.number,
+                              )
+                            : _TrackingCodeCaptureField(
+                                trackingType: l['tracking_method'] as String,
+                                expectedCount: int.tryParse(
+                                        (l['expected_quantity'] as TextEditingController).text) ??
+                                    0,
+                                codes: l['scanned_codes'] as List<String>,
+                                onChanged: (codes) => setState(() => l['scanned_codes'] = codes),
+                              ),
+                      ),
                   ],
                 ),
               ),
             );
           }),
           const SizedBox(height: 16),
-          TextField(
-            controller: _headerDiscountController,
-            decoration: const InputDecoration(labelText: 'Whole-bill discount', hintText: '0.00', border: OutlineInputBorder()),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _headerDiscountController,
+                  decoration: const InputDecoration(labelText: 'Whole-bill discount', hintText: '0.00', border: OutlineInputBorder()),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'fixed', label: Text('Rs.')),
+                  ButtonSegment(value: 'percent', label: Text('%')),
+                ],
+                selected: {_headerDiscountType},
+                onSelectionChanged: (s) => setState(() => _headerDiscountType = s.first),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           FilledButton(
@@ -685,6 +748,143 @@ class _NewVendorInvoiceScreenState extends State<_NewVendorInvoiceScreen> {
 }
 
 bool _isValidImei(String code) => code.length == 15 && RegExp(r'^\d+$').hasMatch(code);
+
+/// Per-line IMEI/serial/barcode capture: manual entry + camera scan + validation,
+/// reused wherever a fixed number of tracking codes needs to be collected for one line
+/// (currently: creation-time "receive now" on a new vendor invoice). Deliberately
+/// self-contained/stateless-from-the-outside (codes live in the parent's line map,
+/// passed in and reported back via onChanged) so it can be dropped into any screen with
+/// its own per-line state shape without this widget needing to know about it.
+class _TrackingCodeCaptureField extends StatefulWidget {
+  final String trackingType;
+  final int expectedCount;
+  final List<String> codes;
+  final ValueChanged<List<String>> onChanged;
+
+  const _TrackingCodeCaptureField({
+    required this.trackingType,
+    required this.expectedCount,
+    required this.codes,
+    required this.onChanged,
+  });
+
+  @override
+  State<_TrackingCodeCaptureField> createState() => _TrackingCodeCaptureFieldState();
+}
+
+class _TrackingCodeCaptureFieldState extends State<_TrackingCodeCaptureField> {
+  final _manualController = TextEditingController();
+
+  @override
+  void dispose() {
+    _manualController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showInvalidImeiDialog(String code) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Invalid IMEI'),
+        content: Text(
+          '"$code" is not a valid IMEI.\n\nAn IMEI must be exactly 15 digits (numbers only). '
+          'This code was rejected - press OK, then scan or type again.',
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addCode(String rawCode) async {
+    final code = rawCode.trim();
+    if (code.isEmpty) return;
+    if (widget.codes.length >= widget.expectedCount) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Already entered the expected quantity for this line.')));
+      return;
+    }
+    if (widget.trackingType == 'imei' && !_isValidImei(code)) {
+      await _showInvalidImeiDialog(code);
+      return;
+    }
+    if (widget.codes.contains(code)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('That code was already entered for this line.')));
+      return;
+    }
+    widget.onChanged([...widget.codes, code]);
+    _manualController.clear();
+  }
+
+  Future<void> _scan() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+    );
+    if (code == null) return;
+    await _addCode(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fullyCaptured = widget.codes.length >= widget.expectedCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${widget.codes.length} of ${widget.expectedCount} entered',
+          style: TextStyle(
+            color: fullyCaptured ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: fullyCaptured ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        if (widget.codes.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: widget.codes
+                .map((code) => Chip(
+                      label: Text(code, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                      onDeleted: () => widget.onChanged([...widget.codes]..remove(code)),
+                    ))
+                .toList(),
+          ),
+        ],
+        if (!fullyCaptured) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _manualController,
+                  decoration: InputDecoration(
+                    labelText: widget.trackingType == 'imei' ? 'Enter 15-digit IMEI' : 'Enter ${widget.trackingType}',
+                  ),
+                  keyboardType: widget.trackingType == 'imei' ? TextInputType.number : TextInputType.text,
+                  onSubmitted: (v) => _addCode(v),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: 'Add',
+                onPressed: () => _addCode(_manualController.text),
+              ),
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Scan with camera',
+                onPressed: _scan,
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 class _ReceiveBillScreen extends StatefulWidget {
   final Map<String, dynamic> bill;

@@ -3,27 +3,33 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../widgets/discount_editor.dart';
+import '../widgets/tracking_code_editor.dart';
 
 class _EditableBillItem {
   final int? id;
   final int productId;
   final String productName;
+  final String productTrackingMethod;
   final double receivedQuantity;
   final TextEditingController unitPriceController;
   final TextEditingController quantityController;
   List<DiscountEntry> discounts;
+  List<Map<String, dynamic>> trackingUnits;
 
   _EditableBillItem({
     this.id,
     required this.productId,
     required this.productName,
+    this.productTrackingMethod = 'none',
     required this.receivedQuantity,
     required String unitPrice,
     required String quantity,
     List<DiscountEntry>? discounts,
+    List<Map<String, dynamic>>? trackingUnits,
   })  : unitPriceController = TextEditingController(text: unitPrice),
         quantityController = TextEditingController(text: quantity),
-        discounts = discounts ?? [];
+        discounts = discounts ?? [],
+        trackingUnits = trackingUnits ?? [];
 }
 
 /// Owner/Manager-only correction of a vendor bill's line items. Lines with
@@ -41,6 +47,7 @@ class BillEditScreen extends StatefulWidget {
 class _BillEditScreenState extends State<BillEditScreen> {
   final List<_EditableBillItem> _items = [];
   final _headerDiscountController = TextEditingController();
+  String _headerDiscountType = 'fixed';
   final _productSearchController = TextEditingController();
   List<dynamic> _productResults = [];
   bool _saving = false;
@@ -55,14 +62,17 @@ class _BillEditScreenState extends State<BillEditScreen> {
           id: it['id'] as int,
           productId: it['product'] as int,
           productName: it['product_name'] as String,
+          productTrackingMethod: it['product_tracking_method'] as String? ?? 'none',
           receivedQuantity: double.tryParse(it['received_quantity']?.toString() ?? '') ?? 0,
           unitPrice: it['unit_price'].toString(),
           quantity: it['quantity'].toString(),
           discounts: ((it['discounts'] as List?) ?? [])
               .map((d) => DiscountEntry(type: d['type'] as String, value: d['value'].toString()))
               .toList(),
+          trackingUnits: ((it['tracking_units'] as List?) ?? []).cast<Map<String, dynamic>>(),
         )));
     _headerDiscountController.text = widget.bill['discount_amount']?.toString() ?? '';
+    _headerDiscountType = widget.bill['discount_type'] as String? ?? 'fixed';
   }
 
   @override
@@ -85,6 +95,7 @@ class _BillEditScreenState extends State<BillEditScreen> {
       _items.add(_EditableBillItem(
         productId: product['id'] as int,
         productName: product['name'] as String,
+        productTrackingMethod: product['tracking_method'] as String? ?? 'none',
         receivedQuantity: 0,
         unitPrice: product['cost_price']?.toString() ?? '0',
         quantity: '1',
@@ -103,6 +114,7 @@ class _BillEditScreenState extends State<BillEditScreen> {
     try {
       await _api.request('/api/purchase/bills/${widget.bill['id']}/edit/', method: 'POST', body: {
         if (_headerDiscountController.text.isNotEmpty) 'discount_amount': _headerDiscountController.text,
+        'discount_type': _headerDiscountType,
         'items': _items
             .map((it) => {
                   if (it.id != null) 'id': it.id,
@@ -190,6 +202,36 @@ class _BillEditScreenState extends State<BillEditScreen> {
                         ),
                       ],
                     ),
+                    if (it.trackingUnits.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 6),
+                      const Text('Units on this line:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: it.trackingUnits.map((unit) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TrackingCodeEditor(
+                                id: unit['id'] as int,
+                                code: unit['code'] as String?,
+                                status: unit['status'] as String,
+                                trackingMethod: it.productTrackingMethod,
+                                onSaved: (newCode) => setState(() => unit['code'] = newCode),
+                              ),
+                              if (unit['status'] != 'available')
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 2),
+                                  child: Text('(${unit['status']})', style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic)),
+                                ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -208,10 +250,25 @@ class _BillEditScreenState extends State<BillEditScreen> {
             );
           }),
           const SizedBox(height: 12),
-          TextField(
-            controller: _headerDiscountController,
-            decoration: const InputDecoration(labelText: 'Whole-bill discount', hintText: '0.00', border: OutlineInputBorder()),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _headerDiscountController,
+                  decoration: const InputDecoration(labelText: 'Whole-bill discount', hintText: '0.00', border: OutlineInputBorder()),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'fixed', label: Text('Rs.')),
+                  ButtonSegment(value: 'percent', label: Text('%')),
+                ],
+                selected: {_headerDiscountType},
+                onSelectionChanged: (s) => setState(() => _headerDiscountType = s.first),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           FilledButton(

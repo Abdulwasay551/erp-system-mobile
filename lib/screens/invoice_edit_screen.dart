@@ -3,13 +3,16 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../widgets/discount_editor.dart';
+import '../widgets/tracking_code_editor.dart';
 
 class _EditableItem {
   int? id;
   final int productId;
   final String productName;
-  final String? trackingIdentifier;
+  final String productTrackingMethod;
+  String? trackingIdentifier;
   final int? trackingUnitId;
+  final String? trackingStatus;
   final TextEditingController unitPriceController;
   final TextEditingController quantityController;
   List<DiscountEntry> discounts;
@@ -18,8 +21,10 @@ class _EditableItem {
     this.id,
     required this.productId,
     required this.productName,
+    this.productTrackingMethod = 'none',
     this.trackingIdentifier,
     this.trackingUnitId,
+    this.trackingStatus,
     required String unitPrice,
     required String quantity,
     List<DiscountEntry>? discounts,
@@ -74,8 +79,10 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
                 id: it['id'] as int,
                 productId: it['product'] as int,
                 productName: it['product_name'] as String,
+                productTrackingMethod: it['product_tracking_method'] as String? ?? 'none',
                 trackingIdentifier: it['tracking_identifier'] as String?,
                 trackingUnitId: it['tracking_unit'] as int?,
+                trackingStatus: it['tracking_status'] as String?,
                 unitPrice: it['unit_price'].toString(),
                 quantity: it['quantity'].toString(),
                 discounts: ((it['discounts'] as List?) ?? [])
@@ -179,8 +186,14 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
                               ),
                             ],
                           ),
-                          if (it.trackingIdentifier != null)
-                            Text(it.trackingIdentifier!, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                          if (it.trackingUnitId != null)
+                            TrackingCodeEditor(
+                              id: it.trackingUnitId!,
+                              code: it.trackingIdentifier,
+                              status: it.trackingStatus ?? 'sold',
+                              trackingMethod: it.productTrackingMethod,
+                              onSaved: (newCode) => setState(() => it.trackingIdentifier = newCode),
+                            ),
                           const SizedBox(height: 8),
                           Row(
                             children: [

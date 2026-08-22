@@ -64,6 +64,7 @@ class _POSScreenState extends State<POSScreen> {
   Map<String, dynamic>? _lastInvoice;
   bool _openingPdf = false;
   final _discountController = TextEditingController();
+  String _discountType = 'fixed';
 
   Future<void> _searchCustomers(String q) async {
     if (q.trim().isEmpty) {
@@ -92,8 +93,10 @@ class _POSScreenState extends State<POSScreen> {
         (sum, l) => sum + computeDiscountTotal(l.unitPrice * l.quantity, l.quantity, l.discounts),
       );
   double get _discountAmount {
-    final v = double.tryParse(_discountController.text) ?? 0;
-    return v.clamp(0, (_cartSubtotal - _lineDiscountsTotal).clamp(0, double.infinity)).toDouble();
+    final netSubtotal = (_cartSubtotal - _lineDiscountsTotal).clamp(0, double.infinity).toDouble();
+    final raw = double.tryParse(_discountController.text) ?? 0;
+    final resolved = _discountType == 'percent' ? netSubtotal * (raw / 100) : raw;
+    return resolved.clamp(0, netSubtotal).toDouble();
   }
 
   double get _cartTotal => _cartSubtotal - _lineDiscountsTotal - _discountAmount;
@@ -185,7 +188,8 @@ class _POSScreenState extends State<POSScreen> {
                       .toList(),
                 })
             .toList(),
-        if (_discountAmount > 0) 'discount_amount': _discountAmount,
+        if (_discountController.text.isNotEmpty) 'discount_amount': _discountController.text,
+        'discount_type': _discountType,
         'payment': {'method': _paymentMethod, 'amount': _cartTotal},
       };
       final itemCount = _cart.length;
@@ -206,6 +210,7 @@ class _POSScreenState extends State<POSScreen> {
         _customerSearchController.clear();
         _customerResults = [];
         _discountController.clear();
+        _discountType = 'fixed';
       });
       if (mounted) {
         final message = enqueueResult.queued
@@ -412,11 +417,26 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                 ],
                 const SizedBox(height: 8),
-                TextField(
-                  controller: _discountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'Cart-wide discount', hintText: '0.00', border: OutlineInputBorder()),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _discountController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(labelText: 'Cart-wide discount', hintText: '0.00', border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'fixed', label: Text('Rs.')),
+                        ButtonSegment(value: 'percent', label: Text('%')),
+                      ],
+                      selected: {_discountType},
+                      onSelectionChanged: (s) => setState(() => _discountType = s.first),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
