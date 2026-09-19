@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../widgets/discount_editor.dart';
 import '../widgets/tracking_code_editor.dart';
+import '../widgets/tracking_unit_picker.dart';
 
 class _EditableItem {
   int? id;
@@ -105,11 +106,35 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
     } catch (_) {}
   }
 
-  void _addProduct(Map<String, dynamic> product) {
-    if (product['tracking_method'] != 'none') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Tracked items (IMEI/serial) can't be added here - use POS for new phones.")),
+  Future<void> _addProduct(Map<String, dynamic> product) async {
+    final trackingMethod = product['tracking_method'] as String? ?? 'none';
+    if (trackingMethod != 'none') {
+      // Tracked (IMEI/serial) products can't just take a quantity - open a picker so
+      // the user selects the specific unit(s) already in stock to sell, one line per
+      // unit. Untracked accessories (chargers, cases, ...) skip straight to adding below.
+      final units = await showTrackingUnitPicker(
+        context,
+        api: _api,
+        productId: product['id'] as int,
+        productName: product['name'] as String,
       );
+      if (units == null || units.isEmpty || !mounted) return;
+      setState(() {
+        for (final unit in units) {
+          _items.add(_EditableItem(
+            productId: product['id'] as int,
+            productName: product['name'] as String,
+            productTrackingMethod: trackingMethod,
+            trackingUnitId: unit['id'] as int,
+            trackingIdentifier: unit['identifier'] as String?,
+            trackingStatus: 'available',
+            unitPrice: product['selling_price']?.toString() ?? '0',
+            quantity: '1',
+          ));
+        }
+        _productResults = [];
+        _productSearchController.clear();
+      });
       return;
     }
     setState(() {
@@ -252,7 +277,7 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
                 }),
                 const SizedBox(height: 4),
                 Text(
-                  'To add a new phone/IMEI-tracked item, use POS for a new sale instead.',
+                  'Adding a phone/IMEI-tracked product will ask you to pick the specific unit(s) in stock to sell.',
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),

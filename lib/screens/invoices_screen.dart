@@ -253,11 +253,27 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
   bool _paying = false;
   final _amountController = TextEditingController();
   String _method = 'cash';
+  List<Map<String, dynamic>>? _items;
+  bool _loadingItems = true;
 
   @override
   void initState() {
     super.initState();
     _amountController.text = widget.outstanding > 0 ? widget.outstanding.toStringAsFixed(2) : '';
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    try {
+      final data = await widget.api.request('/api/sales/invoices/${widget.invoice['id']}/') as Map<String, dynamic>;
+      final items = (data['items'] as List).cast<Map<String, dynamic>>();
+      if (mounted) setState(() => _items = items);
+    } on ApiException {
+      // Header fields already loaded from the list response - a failed item fetch just
+      // means the line-item breakdown stays hidden, not a hard error for the sheet.
+    } finally {
+      if (mounted) setState(() => _loadingItems = false);
+    }
   }
 
   @override
@@ -322,7 +338,8 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
     final inv = widget.invoice;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -334,6 +351,24 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
           _row('Paid', 'Rs. ${inv['paid_amount']}'),
           _row('Outstanding', 'Rs. ${inv['outstanding_amount']}'),
           const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 4),
+          Text('Items', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          if (_loadingItems)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else if (_items == null || _items!.isEmpty)
+            const Text('No line items.')
+          else
+            Column(
+              children: [
+                for (final item in _items!) _InvoiceItemRow(item: item),
+              ],
+            ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -410,6 +445,7 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
             child: Text(_paying ? 'Recording...' : 'Record Payment'),
           ),
         ],
+        ),
       ),
     );
   }
@@ -423,6 +459,52 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
         children: [
           Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
           Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSurface)),
+        ],
+      ),
+    );
+  }
+}
+
+/// One read-only invoice line - mirrors the web invoice detail page's rendering: product
+/// name plus qty x price = total, with the specific IMEI/serial (if this line is a
+/// tracked unit) shown as a small sub-line underneath.
+class _InvoiceItemRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _InvoiceItemRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final trackingIdentifier = item['tracking_identifier'] as String?;
+    final trackingStatus = item['tracking_status'] as String?;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(border: Border.all(color: scheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text(item['product_name'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+              Text(
+                '${item['quantity']} x Rs. ${item['unit_price']} = Rs. ${item['line_total']}',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+            ],
+          ),
+          if (trackingIdentifier != null) ...[
+            const SizedBox(height: 6),
+            Divider(height: 1, color: scheme.outlineVariant),
+            const SizedBox(height: 6),
+            Text(
+              trackingStatus != null && trackingStatus != 'available'
+                  ? '($trackingStatus) $trackingIdentifier'
+                  : trackingIdentifier,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant, fontFamily: 'monospace'),
+            ),
+          ],
         ],
       ),
     );
