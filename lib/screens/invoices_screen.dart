@@ -44,8 +44,24 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   String? _status;
   String _ordering = '-invoice_date';
   DateTime? _cachedAt;
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
 
   ApiClient get _api => context.read<AuthService>().api;
+
+  String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (isFrom ? _dateFrom : _dateTo) ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null) return;
+    setState(() => isFrom ? _dateFrom = picked : _dateTo = picked);
+    _load();
+  }
 
   @override
   void initState() {
@@ -66,6 +82,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       'page': '$_page',
       'ordering': _ordering,
       if (_status != null) 'status': _status!,
+      if (_dateFrom != null) 'date_from': _fmt(_dateFrom!),
+      if (_dateTo != null) 'date_to': _fmt(_dateTo!),
     };
     final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
     final online = context.read<ConnectivityService>().isOnline;
@@ -143,6 +161,38 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       ),
                   ],
                 ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickDate(isFrom: true),
+                    child: Text(_dateFrom == null ? 'From' : _fmt(_dateFrom!), style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickDate(isFrom: false),
+                    child: Text(_dateTo == null ? 'To' : _fmt(_dateTo!), style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+                if (_dateFrom != null || _dateTo != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear dates',
+                    onPressed: () {
+                      setState(() {
+                        _dateFrom = null;
+                        _dateTo = null;
+                      });
+                      _load();
+                    },
+                  ),
               ],
             ),
           ),

@@ -528,6 +528,8 @@ class _SalesTrendChart extends StatelessWidget {
 
 /// Invoice drop-off funnel (Created -> Confirmed -> Paid in Full) for the selected date
 /// range, mirroring the web dashboard's hand-rolled bar-style funnel visual.
+/// An actual tapered funnel shape (CustomPainter polygons stacked vertically, narrowing
+/// stage to stage) - mirrors the web dashboard's SVG funnel, not a set of separate bars.
 class _SalesFunnelCard extends StatelessWidget {
   final List<dynamic> stages;
   const _SalesFunnelCard({required this.stages});
@@ -535,8 +537,8 @@ class _SalesFunnelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final counts = stages.map((s) => (s as Map<String, dynamic>)['count'] as int).toList();
-    final maxCount = counts.isEmpty ? 1 : counts.reduce((a, b) => a > b ? a : b).clamp(1, 1 << 31);
+    final counts = stages.map((s) => ((s as Map<String, dynamic>)['count'] as num).toDouble()).toList();
+    final colors = [scheme.primary, scheme.secondary, scheme.tertiary, scheme.primary, scheme.secondary];
 
     return Card(
       child: Padding(
@@ -546,53 +548,89 @@ class _SalesFunnelCard extends StatelessWidget {
           children: [
             Text('Sales Funnel', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 12),
-            for (var i = 0; i < stages.length; i++) ...[
-              Builder(builder: (context) {
-                final s = stages[i] as Map<String, dynamic>;
-                final count = s['count'] as int;
-                final total = double.tryParse(s['total'].toString()) ?? 0;
-                final widthFraction = maxCount == 0 ? 0.0 : count / maxCount;
-                final prevCount = i > 0 ? counts[i - 1] : null;
-                final conversion = (prevCount != null && prevCount > 0) ? ((count / prevCount) * 100).round() : null;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('${s['stage']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                          Text(
-                            '$count · Rs. ${total.toStringAsFixed(0)}${conversion != null ? ' ($conversion% of prior)' : ''}',
-                            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      LayoutBuilder(builder: (context, constraints) {
-                        return Container(
-                          height: 20,
-                          width: constraints.maxWidth,
-                          decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: 20,
-                              width: constraints.maxWidth * (widthFraction.clamp(0.0, 1.0)),
-                              decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(4)),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
+            SizedBox(
+              height: stages.length * 76.0,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _FunnelPainter(
+                  counts: counts,
+                  colors: [for (var i = 0; i < stages.length; i++) colors[i % colors.length]],
+                  labels: [for (final s in stages) (s as Map<String, dynamic>)['stage'] as String],
+                  values: [for (final s in stages) double.tryParse((s as Map<String, dynamic>)['total'].toString()) ?? 0],
+                  onSurface: scheme.onPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              children: [
+                for (var i = 1; i < stages.length; i++)
+                  Text(
+                    '${(stages[i] as Map<String, dynamic>)['stage']}: ${counts[i - 1] > 0 ? (counts[i] / counts[i - 1] * 100).round() : 0}% of ${(stages[i - 1] as Map<String, dynamic>)['stage']}',
+                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                   ),
-                );
-              }),
-            ],
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _FunnelPainter extends CustomPainter {
+  final List<double> counts;
+  final List<Color> colors;
+  final List<String> labels;
+  final List<double> values;
+  final Color onSurface;
+  _FunnelPainter({required this.counts, required this.colors, required this.labels, required this.values, required this.onSurface});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (counts.isEmpty) return;
+    final maxCount = counts.reduce((a, b) => a > b ? a : b).clamp(1.0, double.infinity);
+    final segHeight = size.height / counts.length;
+    final gap = 3.0;
+    final maxSegWidth = size.width * 0.85;
+    final cx = size.width / 2;
+
+    double widthFor(double count) => (count / maxCount * maxSegWidth).clamp(count > 0 ? 24.0 : 0.0, maxSegWidth);
+
+    for (var i = 0; i < counts.length; i++) {
+      final topW = widthFor(counts[i]);
+      final nextCount = i < counts.length - 1 ? counts[i + 1] : counts[i] * 0.55;
+      final bottomW = widthFor(nextCount);
+      final y = i * segHeight;
+      final path = Path()
+        ..moveTo(cx - topW / 2, y)
+        ..lineTo(cx + topW / 2, y)
+        ..lineTo(cx + bottomW / 2, y + segHeight - gap)
+        ..lineTo(cx - bottomW / 2, y + segHeight - gap)
+        ..close();
+      canvas.drawPath(path, Paint()..color = colors[i].withValues(alpha: 0.9));
+
+      final title = TextPainter(
+        text: TextSpan(
+          text: labels[i],
+          style: TextStyle(color: onSurface, fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      title.paint(canvas, Offset(cx - title.width / 2, y + segHeight / 2 - 16));
+
+      final detail = TextPainter(
+        text: TextSpan(
+          text: '${counts[i].toInt()} · Rs. ${values[i].toStringAsFixed(0)}',
+          style: TextStyle(color: onSurface, fontSize: 11),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      detail.paint(canvas, Offset(cx - detail.width / 2, y + segHeight / 2 + 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FunnelPainter oldDelegate) => true;
 }
