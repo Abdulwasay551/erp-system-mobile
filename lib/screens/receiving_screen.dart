@@ -4,7 +4,6 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/pdf_helper.dart';
 import '../widgets/gradient_fab.dart';
-import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/discount_editor.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_search.dart';
@@ -86,18 +85,6 @@ class _PendingReceiptsTabState extends State<_PendingReceiptsTab> {
     if (received == true) _load();
   }
 
-  Future<void> _deleteBill(Map<String, dynamic> bill) async {
-    final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
-    if (!confirmed) return;
-    try {
-      await _api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthService>().isAdmin;
@@ -162,7 +149,6 @@ class _PendingReceiptsTabState extends State<_PendingReceiptsTab> {
                                     if (changed == true) _load();
                                   },
                                 ),
-                              if (isAdmin) DeleteIconButton(onPressed: () => _deleteBill(bill)),
                               const SizedBox(width: 4),
                               FilledButton(onPressed: () => _openReceive(bill), child: const Text('Receive')),
                             ],
@@ -255,18 +241,6 @@ class _AllBillsTabState extends State<_AllBillsTab> {
     if (changed == true) _load();
   }
 
-  Future<void> _deleteBill(Map<String, dynamic> bill) async {
-    final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
-    if (!confirmed) return;
-    try {
-      await _api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthService>().isAdmin;
@@ -324,7 +298,6 @@ class _AllBillsTabState extends State<_AllBillsTab> {
                                         tooltip: 'Edit',
                                         onPressed: () => _editBill(bill),
                                       ),
-                                    if (isAdmin) DeleteIconButton(onPressed: () => _deleteBill(bill)),
                                   ],
                                 ),
                                 onTap: () => _openBill(bill),
@@ -401,47 +374,20 @@ class _ReceivedBillDetailSheetState extends State<_ReceivedBillDetailSheet> {
           ),
           if (context.read<AuthService>().isAdmin) ...[
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final navigator = Navigator.of(context);
-                      final changed = await Navigator.push<bool>(
-                        context,
-                        MaterialPageRoute(builder: (context) => BillEditScreen(bill: bill)),
-                      );
-                      if (changed == true) {
-                        widget.onChanged();
-                        navigator.pop();
-                      }
-                    },
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final navigator = Navigator.of(context);
-                      final messenger = ScaffoldMessenger.of(context);
-                      final confirmed = await confirmDelete(context, itemLabel: bill['bill_number'] as String?);
-                      if (!confirmed) return;
-                      try {
-                        await widget.api.request('/api/purchase/bills/${bill['id']}/', method: 'DELETE');
-                        messenger.showSnackBar(const SnackBar(content: Text('Vendor invoice deleted.')));
-                        widget.onChanged();
-                        navigator.pop();
-                      } catch (e) {
-                        messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-                      }
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Delete'),
-                  ),
-                ),
-              ],
+            OutlinedButton.icon(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                final changed = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(builder: (context) => BillEditScreen(bill: bill)),
+                );
+                if (changed == true) {
+                  widget.onChanged();
+                  navigator.pop();
+                }
+              },
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit'),
             ),
           ],
         ],

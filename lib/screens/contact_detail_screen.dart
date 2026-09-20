@@ -82,36 +82,33 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(contact['phone']?.toString() ?? '', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: outstanding > 0 ? context.semanticColors.warning : null,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            InfoIconButton(
-                              message: _isCustomer
-                                  ? 'Total amount this customer currently owes you: invoices billed, minus payments received and credit notes issued.'
-                                  : 'Total amount you currently owe this supplier: bills received, minus payments you made and returns/debit notes issued.',
-                            ),
-                          ],
+                  Text(contact['phone']?.toString() ?? '', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: outstanding > 0 ? context.semanticColors.warning : null,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 4),
+                      InfoIconButton(
+                        message: _isCustomer
+                            ? 'Total amount this customer currently owes you: invoices billed, minus payments received and credit notes issued.'
+                            : 'Total amount you currently owe this supplier: bills received, minus payments you made and returns/debit notes issued.',
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       FilledButton.icon(icon: const Icon(Icons.payments_outlined), label: const Text('Pay'), onPressed: _pay),
                       if (isAdmin)

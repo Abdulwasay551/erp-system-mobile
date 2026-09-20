@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/connectivity_service.dart';
-import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/offline_banner.dart';
 
 const _categories = [
@@ -103,18 +102,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     await _load(reset: false);
   }
 
-  Future<void> _deleteExpense(Map<String, dynamic> expense) async {
-    final confirmed = await confirmDelete(context, itemLabel: expense['category_display'] as String?);
-    if (!confirmed) return;
-    try {
-      await _api.request('/api/accounting/expenses/${expense['id']}/', method: 'DELETE');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense deleted.')));
-      _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
   Future<void> _openAddDialog() async {
     String category = 'rent';
     final descriptionController = TextEditingController();
@@ -188,7 +175,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
       floatingActionButton: FloatingActionButton(onPressed: _openAddDialog, child: const Icon(Icons.add)),
       body: _loading
@@ -276,13 +262,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         child: ListTile(
                           title: Text(expense['category_display'] as String),
                           subtitle: Text('${expense['expense_date']}${expense['description'] != null && (expense['description'] as String).isNotEmpty ? ' · ${expense['description']}' : ''}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Rs. ${expense['amount']}'),
-                              if (isAdmin) DeleteIconButton(onPressed: () => _deleteExpense(expense)),
-                            ],
-                          ),
+                          trailing: Text('Rs. ${expense['amount']}'),
                         ),
                       );
                     }),

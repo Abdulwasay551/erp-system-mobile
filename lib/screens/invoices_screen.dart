@@ -6,7 +6,6 @@ import '../services/pdf_helper.dart';
 import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/tag_pill.dart';
-import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/offline_banner.dart';
 import '../widgets/info_icon_button.dart';
 import 'invoice_edit_screen.dart';
@@ -98,21 +97,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     await _load(reset: false);
   }
 
-  Future<void> _deleteInvoice(Map<String, dynamic> inv) async {
-    final confirmed = await confirmDelete(context, itemLabel: inv['invoice_number'] as String?);
-    if (!confirmed) return;
-    try {
-      await _api.request('/api/sales/invoices/${inv['id']}/', method: 'DELETE');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice deleted.')));
-      _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
       body: Column(
         children: [
@@ -201,8 +187,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                         TagPill(label: status, color: statusColor),
                                       ],
                                     ),
-                                    if (isAdmin)
-                                      DeleteIconButton(onPressed: () => _deleteInvoice(inv)),
                                   ],
                                 ),
                                 onTap: () => _openDetail(inv, outstanding),

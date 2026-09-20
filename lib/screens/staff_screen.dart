@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
-import '../widgets/confirm_delete_dialog.dart';
 import 'staff_form_screen.dart';
 
 const _sortOptions = [
@@ -101,22 +100,8 @@ class _StaffScreenState extends State<StaffScreen> {
     if (saved == true) _load();
   }
 
-  Future<void> _deleteUser(Map<String, dynamic> u) async {
-    final label = '${u['first_name']} ${u['last_name']}'.trim();
-    final confirmed = await confirmDelete(context, itemLabel: label.isEmpty ? u['email'] as String? : label);
-    if (!confirmed) return;
-    try {
-      await _api.request('/api/auth/users/${u['id']}/', method: 'DELETE');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Staff account deleted.')));
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
       appBar: AppBar(title: const Text('Staff Management')),
       floatingActionButton: FloatingActionButton(
@@ -234,7 +219,6 @@ class _StaffScreenState extends State<StaffScreen> {
                                           icon: const Icon(Icons.edit_outlined, size: 18),
                                           onPressed: () => _openForm(u),
                                         ),
-                                        if (isAdmin) DeleteIconButton(onPressed: () => _deleteUser(u)),
                                       ],
                                     ),
                                   ),

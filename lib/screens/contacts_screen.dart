@@ -5,7 +5,6 @@ import '../services/api_client.dart';
 import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_fab.dart';
-import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/offline_banner.dart';
 import 'contact_form_screen.dart';
 import 'contact_detail_screen.dart';
@@ -161,24 +160,8 @@ class _ContactListState extends State<_ContactList> {
     if (saved == true) _load(q: _searchController.text);
   }
 
-  Future<void> _deleteItem(Map<String, dynamic> item) async {
-    final confirmed = await confirmDelete(context, itemLabel: item['name'] as String?);
-    if (!confirmed) return;
-    try {
-      await _api.request('$_endpoint${item['id']}/', method: 'DELETE');
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${_isCustomer ? "Customer" : "Vendor"} deleted.')));
-      }
-      _load(q: _searchController.text);
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isAdmin = context.watch<AuthService>().isAdmin;
     final sortOptions = _isCustomer ? _customerSortOptions : _supplierSortOptions;
     return Scaffold(
       floatingActionButton: GradientFab(
@@ -286,7 +269,6 @@ class _ContactListState extends State<_ContactList> {
                                     icon: const Icon(Icons.edit_outlined, size: 18),
                                     onPressed: () => _openForm(item),
                                   ),
-                                  if (isAdmin) DeleteIconButton(onPressed: () => _deleteItem(item)),
                                 ],
                               ),
                               onTap: () => Navigator.push(
