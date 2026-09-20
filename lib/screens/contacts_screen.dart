@@ -1,14 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
-import '../services/pdf_helper.dart';
 import '../services/connectivity_service.dart';
 import '../theme/app_semantic_colors.dart';
 import '../widgets/gradient_fab.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/offline_banner.dart';
 import 'contact_form_screen.dart';
+import 'contact_detail_screen.dart';
 
 const _customerSortOptions = [
   ('name', 'Name'),
@@ -176,290 +176,6 @@ class _ContactListState extends State<_ContactList> {
     }
   }
 
-  Future<void> _openDetail(Map<String, dynamic> item) async {
-    final id = item['id'];
-    final name = item['name'] as String;
-    final outstanding = double.tryParse(item['outstanding_balance']?.toString() ?? '0') ?? 0;
-    List<dynamic> ledger = [];
-    try {
-      final data = await _api.request('$_endpoint$id/ledger/');
-      ledger = data is List ? data : (data as Map<String, dynamic>)['results'] as List<dynamic>;
-    } catch (_) {}
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        expand: false,
-        builder: (context, scrollController) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: Theme.of(context).textTheme.titleLarge),
-              Text(
-                'Outstanding: Rs. ${outstanding.toStringAsFixed(2)}',
-                style: TextStyle(
-                  color: outstanding > 0
-                      ? context.semanticColors.warning
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text('Record Payment'),
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await _recordPayment(item, outstanding);
-                    },
-                  ),
-                  if (context.read<AuthService>().isAdmin)
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('Debit/Credit'),
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await _recordAdjustment(item);
-                      },
-                    ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    label: const Text('Ledger PDF'),
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      try {
-                        await downloadAndOpenPdf(_api, '$_endpoint$id/ledger/pdf/', '$name-ledger.pdf');
-                      } catch (e) {
-                        if (mounted) messenger.showSnackBar(SnackBar(content: Text('$e')));
-                      }
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text('Ledger', style: Theme.of(context).textTheme.titleSmall),
-              Expanded(
-                child: ledger.isEmpty
-                    ? const Center(child: Text('No transactions yet.'))
-                    : ListView.builder(
-                        controller: scrollController,
-                        itemCount: ledger.length,
-                        itemBuilder: (context, i) {
-                          final e = ledger[i] as Map<String, dynamic>;
-                          final debit = double.tryParse(e['debit_amount']?.toString() ?? '0') ?? 0;
-                          final credit = double.tryParse(e['credit_amount']?.toString() ?? '0') ?? 0;
-                          return ListTile(
-                            dense: true,
-                            title: Text(e['description']?.toString() ?? ''),
-                            subtitle: Text(e['transaction_date']?.toString() ?? ''),
-                            trailing: Text(
-                              debit > 0 ? '+Rs. $debit' : '-Rs. $credit',
-                              style: TextStyle(
-                                color: debit > 0 ? context.semanticColors.danger : context.semanticColors.success,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _recordPayment(Map<String, dynamic> item, double outstanding) async {
-    final hasOutstanding = outstanding > 0;
-    final amountController = TextEditingController(text: hasOutstanding ? outstanding.toStringAsFixed(2) : '');
-    var paymentType = hasOutstanding ? 'full' : 'partial'; // 'full' or 'partial'
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Record Payment'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'full', label: Text('Full Amount')),
-                  ButtonSegment(value: 'partial', label: Text('Partial Amount')),
-                ],
-                selected: {paymentType},
-                onSelectionChanged: (selection) => setDialogState(() {
-                  paymentType = selection.first;
-                  amountController.text = paymentType == 'full' ? outstanding.toStringAsFixed(2) : '';
-                }),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountController,
-                enabled: paymentType == 'partial',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Amount',
-                  hintText: paymentType == 'partial' ? 'Amount received' : null,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Record')),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    try {
-      final endpoint = widget.kind == ContactKind.customer ? '/api/sales/payments/' : '/api/purchase/purchase-payments/';
-      final body = widget.kind == ContactKind.customer
-          ? {
-              'customer': item['id'],
-              'amount': amountController.text,
-              'method': 'cash',
-              'payment_date': DateTime.now().toIso8601String().substring(0, 10),
-            }
-          : {
-              'supplier': item['id'],
-              'amount': amountController.text,
-              'payment_method': 'cash',
-              'payment_date': DateTime.now().toIso8601String().substring(0, 10),
-            };
-      final online = context.read<ConnectivityService>().isOnline;
-      final result = await _api.enqueueOrSend(
-        isOnline: online,
-        queueType: 'record_payment',
-        path: endpoint,
-        body: body,
-        summary: 'Payment - Rs. ${amountController.text} - ${item['name']}',
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result.queued ? 'Payment saved offline - will sync automatically.' : 'Payment recorded.'),
-        ));
-      }
-      _load(q: _searchController.text);
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  Future<void> _recordAdjustment(Map<String, dynamic> item) async {
-    final amountController = TextEditingController();
-    final referenceController = TextEditingController();
-    final descriptionController = TextEditingController();
-    var entryType = 'debit';
-    var method = 'cash';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Ledger Adjustment'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'debit', label: Text('Debit')),
-                    ButtonSegment(value: 'credit', label: Text('Credit')),
-                  ],
-                  selected: {entryType},
-                  onSelectionChanged: (selection) => setDialogState(() => entryType = selection.first),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: method,
-                  decoration: const InputDecoration(labelText: 'Payment Method'),
-                  items: const [
-                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                    DropdownMenuItem(value: 'bank_transfer', child: Text('Bank Transfer')),
-                    DropdownMenuItem(value: 'cheque', child: Text('Cheque')),
-                    DropdownMenuItem(value: 'credit_card', child: Text('Credit Card')),
-                    DropdownMenuItem(value: 'online', child: Text('Online Payment')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
-                  ],
-                  onChanged: (v) => setDialogState(() => method = v ?? 'cash'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: referenceController,
-                  decoration: const InputDecoration(labelText: 'Reference (optional)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(labelText: 'Description / Reason'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    if (amountController.text.trim().isEmpty || (double.tryParse(amountController.text) ?? 0) <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount.')));
-      return;
-    }
-    if (descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A description/reason is required.')));
-      return;
-    }
-    try {
-      final endpoint = widget.kind == ContactKind.customer
-          ? '/api/crm/customer-ledger-adjustments/'
-          : '/api/purchase/supplier-ledger-adjustments/';
-      final body = {
-        widget.kind == ContactKind.customer ? 'customer' : 'supplier': item['id'],
-        'entry_type': entryType,
-        'amount': amountController.text,
-        'payment_method': method,
-        if (referenceController.text.trim().isNotEmpty) 'reference': referenceController.text.trim(),
-        'description': descriptionController.text.trim(),
-        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
-      };
-      final online = context.read<ConnectivityService>().isOnline;
-      final result = await _api.enqueueOrSend(
-        isOnline: online,
-        queueType: 'ledger_adjustment',
-        path: endpoint,
-        body: body,
-        summary: '${entryType == 'debit' ? 'Debit' : 'Credit'} - Rs. ${amountController.text} - ${item['name']}',
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result.queued ? 'Adjustment saved offline - will sync automatically.' : 'Adjustment recorded.'),
-        ));
-      }
-      _load(q: _searchController.text);
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthService>().isAdmin;
@@ -573,7 +289,10 @@ class _ContactListState extends State<_ContactList> {
                                   if (isAdmin) DeleteIconButton(onPressed: () => _deleteItem(item)),
                                 ],
                               ),
-                              onTap: () => _openDetail(item),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => ContactDetailScreen(kind: widget.kind, contact: item)),
+                              ),
                             );
                           },
                         ),

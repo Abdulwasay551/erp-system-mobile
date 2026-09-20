@@ -9,6 +9,7 @@ import '../widgets/discount_editor.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_search.dart';
 import '../widgets/tracking_unit_picker.dart';
+import '../widgets/info_icon_button.dart';
 import 'barcode_scanner_screen.dart';
 
 class _CartLine {
@@ -559,7 +560,14 @@ class _POSScreenState extends State<POSScreen> {
                   const SizedBox(height: 8),
                   Text('Invoice: ${_lastInvoice!['invoice_number']}'),
                   Text('Total: Rs. ${_lastInvoice!['total']}'),
-                  Text('Outstanding: Rs. ${_lastInvoice!['outstanding_amount']}'),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Outstanding: Rs. ${_lastInvoice!['outstanding_amount']}'),
+                      const SizedBox(width: 4),
+                      const InfoIconButton(message: 'Total minus Paid for this invoice - what the customer still owes on it specifically.'),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   PopupMenuButton<String>(
                     enabled: !_openingPdf,

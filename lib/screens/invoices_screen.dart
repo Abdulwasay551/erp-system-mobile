@@ -8,6 +8,7 @@ import '../theme/app_semantic_colors.dart';
 import '../widgets/tag_pill.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/offline_banner.dart';
+import '../widgets/info_icon_button.dart';
 import 'invoice_edit_screen.dart';
 
 const _statusOptions = [
@@ -349,7 +350,23 @@ class _InvoiceDetailSheetState extends State<_InvoiceDetailSheet> {
           _row('Date', inv['invoice_date'].toString()),
           _row('Total', 'Rs. ${inv['total']}'),
           _row('Paid', 'Rs. ${inv['paid_amount']}'),
-          _row('Outstanding', 'Rs. ${inv['outstanding_amount']}'),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text('Outstanding'),
+                    SizedBox(width: 4),
+                    InfoIconButton(message: 'Total minus Paid for this invoice - what the customer still owes on it specifically.'),
+                  ],
+                ),
+                Text('Rs. ${inv['outstanding_amount']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 4),
