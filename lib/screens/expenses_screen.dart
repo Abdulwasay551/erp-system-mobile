@@ -42,8 +42,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   String? _category;
   String _ordering = '-expense_date';
   DateTime? _cachedAt;
+  DateTime _dateFrom = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _dateTo = DateTime.now();
 
   ApiClient get _api => context.read<AuthService>().api;
+
+  String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? _dateFrom : _dateTo,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null) return;
+    setState(() => isFrom ? _dateFrom = picked : _dateTo = picked);
+    _load();
+  }
 
   @override
   void initState() {
@@ -60,10 +76,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         _loadingMore = true;
       }
     });
-    final month = DateTime.now().toIso8601String().substring(0, 7);
     final params = {
       'page': '$_page',
       'ordering': _ordering,
+      'date_from': _fmt(_dateFrom),
+      'date_to': _fmt(_dateTo),
       if (_category != null) 'category': _category!,
     };
     final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
@@ -71,9 +88,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     try {
       final expensesCached = await _api.requestCached('/api/accounting/expenses/?$qs', isOnline: online);
       final summaryCached = await _api.requestCached(
-        '/api/accounting/expenses/summary/?month=$month',
+        '/api/accounting/expenses/summary/?$qs',
         isOnline: online,
-        cacheKey: 'expenses_summary_$month',
+        cacheKey: 'expenses_summary_${_fmt(_dateFrom)}_${_fmt(_dateTo)}',
       );
       if (expensesCached == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load expenses.')));
@@ -188,6 +205,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     OfflineDataBanner(cachedAt: _cachedAt!, margin: EdgeInsets.zero),
                     const SizedBox(height: 12),
                   ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickDate(isFrom: true),
+                          child: Text(_fmt(_dateFrom), style: const TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickDate(isFrom: false),
+                          child: Text(_fmt(_dateTo), style: const TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   if (_summary != null)
                     Card(
                       color: Theme.of(context).colorScheme.primaryContainer,
@@ -197,7 +232,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'This Month',
+                              'Total in Range',
                               style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
                             ),
                             Text(
@@ -212,6 +247,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         ),
                       ),
                     ),
+                  if (_summary != null && (_summary!['by_category'] as List).isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _CategoryBreakdownCard(byCategory: _summary!['by_category'] as List<dynamic>),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -279,6 +318,70 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Category breakdown for the selected range - mirrors the hand-rolled bar visual used
+/// for the dashboard's sales funnel card (no chart library needed for a handful of bars).
+class _CategoryBreakdownCard extends StatelessWidget {
+  final List<dynamic> byCategory;
+  const _CategoryBreakdownCard({required this.byCategory});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final totals = byCategory.map((r) => double.tryParse((r as Map<String, dynamic>)['total'].toString()) ?? 0).toList();
+    final maxTotal = totals.isEmpty ? 1.0 : totals.reduce((a, b) => a > b ? a : b).clamp(1.0, double.infinity);
+    final label = Map.fromEntries(_categories.map((c) => MapEntry(c.$1, c.$2)));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Spending by Category', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            for (var i = 0; i < byCategory.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          label[(byCategory[i] as Map<String, dynamic>)['category']] ??
+                              (byCategory[i] as Map<String, dynamic>)['category'].toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        Text('Rs. ${totals[i].toStringAsFixed(0)}', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    LayoutBuilder(builder: (context, constraints) {
+                      return Container(
+                        height: 16,
+                        width: constraints.maxWidth,
+                        decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            height: 16,
+                            width: constraints.maxWidth * (totals[i] / maxTotal).clamp(0.0, 1.0),
+                            decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(4)),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
