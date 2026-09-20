@@ -10,6 +10,38 @@ import '../services/offline_search.dart';
 import 'bill_edit_screen.dart';
 import 'barcode_scanner_screen.dart';
 
+const _billStatusOptions = [
+  (null, 'All'),
+  ('draft', 'Draft'),
+  ('submitted', 'Submitted'),
+  ('approved', 'Approved'),
+  ('partially_paid', 'Partially Paid'),
+  ('paid', 'Paid'),
+  ('overdue', 'Overdue'),
+  ('cancelled', 'Cancelled'),
+];
+
+const _billSortOptions = [
+  ('-bill_date', 'Date (newest)'),
+  ('bill_date', 'Date (oldest)'),
+  ('-total_amount', 'Total (high-low)'),
+  ('total_amount', 'Total (low-high)'),
+  ('bill_number', 'Bill #'),
+  ('supplier__partner__name', 'Supplier'),
+];
+
+class _BillFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _BillFilterChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(label: Text(label), selected: selected, onSelected: (_) => onTap());
+  }
+}
+
 /// Bottom-nav "Receiving" tab - houses both the pending-receipt worklist and a
 /// browsable history of every vendor bill ever recorded, mirroring how the web app
 /// nests "Pending Receipts" + "All Vendor Bills" under one Inventory/Receiving area.
@@ -176,6 +208,8 @@ class _AllBillsTabState extends State<_AllBillsTab> {
   bool _hasMore = false;
   int _page = 1;
   String? _error;
+  String? _status;
+  String _ordering = '-bill_date';
 
   ApiClient get _api => context.read<AuthService>().api;
 
@@ -195,8 +229,14 @@ class _AllBillsTabState extends State<_AllBillsTab> {
       }
       _error = null;
     });
+    final params = {
+      'page': '$_page',
+      'ordering': _ordering,
+      if (_status != null) 'status': _status!,
+    };
+    final qs = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
     try {
-      final data = await _api.request('/api/purchase/bills/?page=$_page&ordering=-bill_date') as Map<String, dynamic>;
+      final data = await _api.request('/api/purchase/bills/?$qs') as Map<String, dynamic>;
       final results = data['results'] as List<dynamic>;
       if (mounted) {
         setState(() {
@@ -245,67 +285,116 @@ class _AllBillsTabState extends State<_AllBillsTab> {
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthService>().isAdmin;
     return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: _error != null
-                  ? ListView(children: [Padding(padding: const EdgeInsets.all(24), child: Text(_error!))])
-                  : _bills.isEmpty
-                      ? ListView(
-                          children: const [
-                            Padding(
-                              padding: EdgeInsets.only(top: 80),
-                              child: Center(child: Text('No vendor bills recorded yet.')),
-                            ),
-                          ],
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _bills.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, i) {
-                            if (i == _bills.length) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                child: Center(
-                                  child: _loadingMore
-                                      ? const CircularProgressIndicator()
-                                      : TextButton(onPressed: _loadMore, child: const Text('Load more')),
-                                ),
-                              );
-                            }
-                            final bill = _bills[i] as Map<String, dynamic>;
-                            final received = bill['goods_received'] == true;
-                            return Card(
-                              child: ListTile(
-                                title: Text('${bill['bill_number']} · ${bill['supplier_name']}'),
-                                subtitle: Text('${bill['bill_date']} · Rs. ${bill['total_amount']}'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Chip(
-                                      label: Text(received ? 'Received' : 'Pending'),
-                                      backgroundColor: received
-                                          ? Colors.green.withValues(alpha: 0.15)
-                                          : Colors.orange.withValues(alpha: 0.15),
-                                      labelStyle:
-                                          TextStyle(color: received ? Colors.green.shade800 : Colors.orange.shade800),
-                                      side: BorderSide.none,
-                                    ),
-                                    if (isAdmin)
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_outlined, size: 20),
-                                        tooltip: 'Edit',
-                                        onPressed: () => _editBill(bill),
-                                      ),
-                                  ],
-                                ),
-                                onTap: () => _openBill(bill),
-                              ),
-                            );
-                          },
-                        ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (value, label) in _billStatusOptions) ...[
+                          _BillFilterChip(
+                            label: label,
+                            selected: _status == value,
+                            onTap: () {
+                              setState(() => _status = value);
+                              _load();
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.sort),
+                  tooltip: 'Sort by',
+                  onSelected: (v) {
+                    setState(() => _ordering = v);
+                    _load();
+                  },
+                  itemBuilder: (context) => [
+                    for (final (value, label) in _billSortOptions)
+                      CheckedPopupMenuItem(
+                        value: value,
+                        checked: _ordering == value,
+                        child: Text(label),
+                      ),
+                  ],
+                ),
+              ],
             ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: _error != null
+                        ? ListView(children: [Padding(padding: const EdgeInsets.all(24), child: Text(_error!))])
+                        : _bills.isEmpty
+                            ? ListView(
+                                children: const [
+                                  Padding(
+                                    padding: EdgeInsets.only(top: 80),
+                                    child: Center(child: Text('No vendor bills match this filter.')),
+                                  ),
+                                ],
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: _bills.length + (_hasMore ? 1 : 0),
+                                itemBuilder: (context, i) {
+                                  if (i == _bills.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Center(
+                                        child: _loadingMore
+                                            ? const CircularProgressIndicator()
+                                            : TextButton(onPressed: _loadMore, child: const Text('Load more')),
+                                      ),
+                                    );
+                                  }
+                                  final bill = _bills[i] as Map<String, dynamic>;
+                                  final received = bill['goods_received'] == true;
+                                  return Card(
+                                    child: ListTile(
+                                      title: Text('${bill['bill_number']} · ${bill['supplier_name']}'),
+                                      subtitle: Text('${bill['bill_date']} · Rs. ${bill['total_amount']}'),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Chip(
+                                            label: Text(received ? 'Received' : 'Pending'),
+                                            backgroundColor: received
+                                                ? Colors.green.withValues(alpha: 0.15)
+                                                : Colors.orange.withValues(alpha: 0.15),
+                                            labelStyle: TextStyle(
+                                                color: received ? Colors.green.shade800 : Colors.orange.shade800),
+                                            side: BorderSide.none,
+                                          ),
+                                          if (isAdmin)
+                                            IconButton(
+                                              icon: const Icon(Icons.edit_outlined, size: 20),
+                                              tooltip: 'Edit',
+                                              onPressed: () => _editBill(bill),
+                                            ),
+                                        ],
+                                      ),
+                                      onTap: () => _openBill(bill),
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
