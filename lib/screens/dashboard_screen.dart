@@ -37,8 +37,11 @@ class _StatCardSpec {
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _stats;
   List<dynamic>? _trendDays;
+  List<dynamic>? _funnelStages;
   String? _error;
   DateTime? _cachedAt;
+  DateTime _dateFrom = DateTime.now();
+  DateTime _dateTo = DateTime.now();
 
   @override
   void initState() {
@@ -46,11 +49,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
+  String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  bool get _isToday => _fmt(_dateFrom) == _fmt(DateTime.now()) && _fmt(_dateTo) == _fmt(DateTime.now());
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? _dateFrom : _dateTo,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null) return;
+    setState(() => isFrom ? _dateFrom = picked : _dateTo = picked);
+  }
+
+  void _applyPreset(int days) {
+    setState(() {
+      _dateTo = DateTime.now();
+      _dateFrom = DateTime.now().subtract(Duration(days: days - 1));
+    });
+    _load();
+  }
+
   Future<void> _load() async {
     final api = context.read<AuthService>().api;
     final online = context.read<ConnectivityService>().isOnline;
+    final range = 'date_from=${_fmt(_dateFrom)}&date_to=${_fmt(_dateTo)}';
     try {
-      final cached = await api.requestCached('/api/analytics/dashboard/', isOnline: online);
+      final cached = await api.requestCached('/api/analytics/dashboard/?$range', isOnline: online);
       if (cached == null) {
         if (mounted) setState(() => _error = 'Failed to load dashboard.');
       } else if (mounted) {
@@ -65,7 +91,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     try {
       final cached = await api.requestCached(
-        '/api/analytics/profit-report/?days=14',
+        '/api/analytics/profit-report/?$range',
         isOnline: online,
         cacheKey: 'dashboard_trend_14',
       );
@@ -75,6 +101,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {
       // Chart is a nice-to-have on the dashboard - a failure here shouldn't block the
       // stat cards above, which already have their own error handling.
+    }
+    try {
+      final cached = await api.requestCached(
+        '/api/analytics/sales-funnel/?$range',
+        isOnline: online,
+        cacheKey: 'dashboard_funnel',
+      );
+      if (mounted && cached != null) {
+        setState(() => _funnelStages = (cached.data as Map<String, dynamic>)['stages'] as List<dynamic>?);
+      }
+    } catch (_) {
+      // Same as the trend chart above - a nice-to-have, doesn't block the stat cards.
     }
   }
 
@@ -95,14 +133,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final cards = [
       _StatCardSpec(
-        label: "Today's Sales",
+        label: _isToday ? "Today's Sales" : "Sales in Range",
         value: "Rs. ${stats['todays_sales_total']}",
         tabIndex: 1,
         icon: Icons.trending_up,
         isHero: true,
       ),
       _StatCardSpec(
-        label: "Sales Count Today",
+        label: _isToday ? "Sales Count Today" : "Sales Count in Range",
         value: "${stats['todays_sales_count']}",
         tabIndex: 1,
         icon: Icons.receipt_long_outlined,
@@ -149,11 +187,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
         slivers: [
           if (_cachedAt != null)
             SliverToBoxAdapter(child: OfflineDataBanner(cachedAt: _cachedAt!)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _pickDate(isFrom: true),
+                      child: Text(_fmt(_dateFrom), style: const TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _pickDate(isFrom: false),
+                      child: Text(_fmt(_dateTo), style: const TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(icon: const Icon(Icons.filter_alt_outlined), tooltip: 'Apply filter', onPressed: _load),
+                  PopupMenuButton<int>(
+                    icon: const Icon(Icons.today_outlined),
+                    tooltip: 'Quick range',
+                    onSelected: _applyPreset,
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 1, child: Text('Today')),
+                      PopupMenuItem(value: 7, child: Text('Last 7 days')),
+                      PopupMenuItem(value: 30, child: Text('Last 30 days')),
+                      PopupMenuItem(value: 90, child: Text('Last 90 days')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (_trendDays != null && _trendDays!.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: _SalesTrendChart(days: _trendDays!),
+              ),
+            ),
+          if (_funnelStages != null && _funnelStages!.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _SalesFunnelCard(stages: _funnelStages!),
               ),
             ),
           SliverPadding(
@@ -439,6 +519,77 @@ class _SalesTrendChart extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Invoice drop-off funnel (Created -> Confirmed -> Paid in Full) for the selected date
+/// range, mirroring the web dashboard's hand-rolled bar-style funnel visual.
+class _SalesFunnelCard extends StatelessWidget {
+  final List<dynamic> stages;
+  const _SalesFunnelCard({required this.stages});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final counts = stages.map((s) => (s as Map<String, dynamic>)['count'] as int).toList();
+    final maxCount = counts.isEmpty ? 1 : counts.reduce((a, b) => a > b ? a : b).clamp(1, 1 << 31);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Sales Funnel', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            for (var i = 0; i < stages.length; i++) ...[
+              Builder(builder: (context) {
+                final s = stages[i] as Map<String, dynamic>;
+                final count = s['count'] as int;
+                final total = double.tryParse(s['total'].toString()) ?? 0;
+                final widthFraction = maxCount == 0 ? 0.0 : count / maxCount;
+                final prevCount = i > 0 ? counts[i - 1] : null;
+                final conversion = (prevCount != null && prevCount > 0) ? ((count / prevCount) * 100).round() : null;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${s['stage']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text(
+                            '$count · Rs. ${total.toStringAsFixed(0)}${conversion != null ? ' ($conversion% of prior)' : ''}',
+                            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      LayoutBuilder(builder: (context, constraints) {
+                        return Container(
+                          height: 20,
+                          width: constraints.maxWidth,
+                          decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 20,
+                              width: constraints.maxWidth * (widthFraction.clamp(0.0, 1.0)),
+                              decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(4)),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                );
+              }),
+            ],
           ],
         ),
       ),
