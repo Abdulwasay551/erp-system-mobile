@@ -117,6 +117,7 @@ class _InvoiceEditScreenState extends State<InvoiceEditScreen> {
         api: _api,
         productId: product['id'] as int,
         productName: product['name'] as String,
+        trackingMethod: trackingMethod,
       );
       if (units == null || units.isEmpty || !mounted) return;
       setState(() {

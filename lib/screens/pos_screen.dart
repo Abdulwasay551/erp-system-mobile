@@ -8,6 +8,7 @@ import '../widgets/gradient_button.dart';
 import '../widgets/discount_editor.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_search.dart';
+import '../widgets/tracking_unit_picker.dart';
 import 'barcode_scanner_screen.dart';
 
 class _CartLine {
@@ -142,9 +143,11 @@ class _POSScreenState extends State<POSScreen> {
     await _search();
   }
 
+  /// Untracked only - tracked products always go through the picker (see
+  /// _selectTrackedUnits below) so a specific unit is always a deliberate, explicit
+  /// choice, never whichever row a name/scan search happened to match first.
   void _addToCart(Map<String, dynamic> item) {
-    final trackingId = item['tracking_id'] as int?;
-    final key = trackingId != null ? 't-$trackingId' : 'p-${item['product_id']}';
+    final key = 'p-${item['product_id']}';
     if (_cart.any((l) => l.key == key)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already in cart.')));
       return;
@@ -154,17 +157,72 @@ class _POSScreenState extends State<POSScreen> {
       _cart.add(_CartLine(
         key: key,
         productId: item['product_id'] as int,
-        trackingId: trackingId,
+        trackingId: null,
         name: variant != null ? '${item['name']} ($variant)' : item['name'] as String,
         identifier: item['identifier']?.toString() ?? '',
         unitPrice: double.parse(item['unit_price'].toString()),
         avgPurchasePrice: double.tryParse(item['avg_purchase_price']?.toString() ?? '') ?? 0,
         quantity: 1,
-        maxQty: trackingId != null ? 1 : double.parse(item['available_qty'].toString()),
+        maxQty: double.parse(item['available_qty'].toString()),
       ));
       _results = [];
       _searchController.clear();
     });
+  }
+
+  Future<void> _selectTrackedUnits(Map<String, dynamic> item) async {
+    final units = await showTrackingUnitPicker(
+      context,
+      api: _api,
+      productId: item['product_id'] as int,
+      productName: item['name'] as String,
+      trackingMethod: item['tracking_method'] as String? ?? 'imei',
+      initialQuery: _searchController.text,
+    );
+    if (units == null || units.isEmpty || !mounted) return;
+    final variant = item['variant'] as String?;
+    setState(() {
+      final existingKeys = _cart.map((l) => l.key).toSet();
+      var skipped = 0;
+      for (final unit in units) {
+        final key = 't-${unit['id']}';
+        if (existingKeys.contains(key)) {
+          skipped++;
+          continue;
+        }
+        _cart.add(_CartLine(
+          key: key,
+          productId: item['product_id'] as int,
+          trackingId: unit['id'] as int,
+          name: variant != null ? '${item['name']} ($variant)' : item['name'] as String,
+          identifier: unit['identifier'] as String? ?? '',
+          unitPrice: double.parse(item['unit_price'].toString()),
+          avgPurchasePrice: double.tryParse(item['avg_purchase_price']?.toString() ?? '') ?? 0,
+          quantity: 1,
+          maxQty: 1,
+        ));
+      }
+      if (skipped > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Some selected units were already in the cart.')));
+      }
+      _results = [];
+      _searchController.clear();
+    });
+  }
+
+  /// Tracked results collapse to one row per product ("N available - Select units")
+  /// instead of one row per unit - picking a specific unit is always an explicit step
+  /// through the picker, never a single tap on whichever row a search happened to match.
+  List<Map<String, dynamic>> get _untrackedResults =>
+      _results.cast<Map<String, dynamic>>().where((r) => r['tracking_method'] == 'none').toList();
+
+  List<MapEntry<int, List<Map<String, dynamic>>>> get _trackedGroups {
+    final groups = <int, List<Map<String, dynamic>>>{};
+    for (final r in _results.cast<Map<String, dynamic>>()) {
+      if (r['tracking_method'] == 'none') continue;
+      groups.putIfAbsent(r['product_id'] as int, () => []).add(r);
+    }
+    return groups.entries.toList();
   }
 
   Future<void> _checkout() async {
@@ -286,14 +344,30 @@ class _POSScreenState extends State<POSScreen> {
           const SizedBox(height: 12),
           Card(
             child: Column(
-              children: _results.map((r) {
-                final item = r as Map<String, dynamic>;
-                return ListTile(
-                  title: Text(item['name'] as String),
-                  subtitle: Text('${item['identifier']} · Rs. ${item['unit_price']} · Qty ${item['available_qty']}'),
-                  trailing: FilledButton(onPressed: () => _addToCart(item), child: const Text('Add')),
-                );
-              }).toList(),
+              children: [
+                for (final group in _trackedGroups)
+                  ListTile(
+                    title: Row(children: [
+                      Expanded(child: Text(group.value.first['name'] as String)),
+                      Chip(
+                        label: Text(group.value.first['tracking_method'] as String, style: const TextStyle(fontSize: 11)),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ]),
+                    subtitle: Text('${group.value.length} available · Rs. ${group.value.first['unit_price']}'),
+                    trailing: FilledButton(
+                      onPressed: () => _selectTrackedUnits(group.value.first),
+                      child: const Text('Select units'),
+                    ),
+                  ),
+                for (final item in _untrackedResults)
+                  ListTile(
+                    title: Text(item['name'] as String),
+                    subtitle: Text('${item['identifier']} · Rs. ${item['unit_price']} · Qty ${item['available_qty']}'),
+                    trailing: FilledButton(onPressed: () => _addToCart(item), child: const Text('Add')),
+                  ),
+              ],
             ),
           ),
         ],
