@@ -109,13 +109,23 @@ class _POSScreenState extends State<POSScreen> {
     setState(() => _searching = true);
     final online = context.read<ConnectivityService>().isOnline;
     try {
+      List<dynamic> data;
       if (online) {
-        final data = await _api.request('/api/sales/pos/search/?q=${Uri.encodeComponent(q)}');
-        setState(() => _results = data as List<dynamic>);
+        data = await _api.request('/api/sales/pos/search/?q=${Uri.encodeComponent(q)}') as List<dynamic>;
       } else {
-        final data = await OfflineSearch.posSearch(q);
-        setState(() => _results = data);
+        data = await OfflineSearch.posSearch(q);
       }
+      // A scanned IMEI/serial/barcode is already an exact, unambiguous pick of one
+      // specific unit - don't make the user select it again from a list of one, that
+      // defeats the point of scanning.
+      if (data.length == 1) {
+        final only = data[0] as Map<String, dynamic>;
+        if (only['tracking_id'] != null && only['identifier']?.toString() == q) {
+          _addTrackedUnitDirect(only);
+          return;
+        }
+      }
+      setState(() => _results = data);
       if (_results.isEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(online ? 'No matching products found.' : 'No matching products found in offline data.'),
@@ -165,6 +175,33 @@ class _POSScreenState extends State<POSScreen> {
         avgPurchasePrice: double.tryParse(item['avg_purchase_price']?.toString() ?? '') ?? 0,
         quantity: 1,
         maxQty: double.parse(item['available_qty'].toString()),
+      ));
+      _results = [];
+      _searchController.clear();
+    });
+  }
+
+  /// Adds a single tracked unit straight to the cart, for when the search itself
+  /// (an exact scan match) already unambiguously identified the unit - see the
+  /// early-return in _search() above.
+  void _addTrackedUnitDirect(Map<String, dynamic> item) {
+    final key = 't-${item['tracking_id']}';
+    if (_cart.any((l) => l.key == key)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already in cart.')));
+      return;
+    }
+    final variant = item['variant'] as String?;
+    setState(() {
+      _cart.add(_CartLine(
+        key: key,
+        productId: item['product_id'] as int,
+        trackingId: item['tracking_id'] as int,
+        name: variant != null ? '${item['name']} ($variant)' : item['name'] as String,
+        identifier: item['identifier']?.toString() ?? '',
+        unitPrice: double.parse(item['unit_price'].toString()),
+        avgPurchasePrice: double.tryParse(item['avg_purchase_price']?.toString() ?? '') ?? 0,
+        quantity: 1,
+        maxQty: 1,
       ));
       _results = [];
       _searchController.clear();
