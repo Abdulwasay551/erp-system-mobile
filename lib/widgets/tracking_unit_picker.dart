@@ -74,15 +74,19 @@ class _TrackingUnitPickerSheetState extends State<_TrackingUnitPickerSheet> {
     super.dispose();
   }
 
-  bool _checkFormat(String q) {
+  // Non-blocking hint only - searching by the last few digits of an IMEI is a normal,
+  // deliberate way to find a unit (matched via substring on the backend), so a query
+  // that isn't 15 digits must never prevent the search itself from running. Only warn
+  // when the length is close enough to 15 that it looks like an attempted full IMEI
+  // with a typo, not a genuine short/partial lookup.
+  void _checkFormat(String q) {
     final trimmed = q.trim();
-    final isAllDigits = trimmed.isNotEmpty && RegExp(r'^\d+$').hasMatch(trimmed);
-    if (widget.trackingMethod == 'imei' && isAllDigits && trimmed.length != _imeiLength) {
-      setState(() => _formatError = 'An IMEI must be exactly $_imeiLength digits (got ${trimmed.length}).');
-      return false;
-    }
-    setState(() => _formatError = null);
-    return true;
+    final looksLikeAttempt = trimmed.length >= 10 && RegExp(r'^\d+$').hasMatch(trimmed);
+    setState(() {
+      _formatError = widget.trackingMethod == 'imei' && looksLikeAttempt && trimmed.length != _imeiLength
+          ? 'An IMEI must be exactly $_imeiLength digits (got ${trimmed.length}) - searching anyway as a partial match.'
+          : null;
+    });
   }
 
   Future<void> _load(String q) async {
@@ -90,7 +94,7 @@ class _TrackingUnitPickerSheetState extends State<_TrackingUnitPickerSheet> {
       _conflict = null;
       _units = [];
     });
-    if (!_checkFormat(q)) return;
+    _checkFormat(q);
     setState(() => _loading = true);
     try {
       final qs = StringBuffer('product=${widget.productId}&status=available');
