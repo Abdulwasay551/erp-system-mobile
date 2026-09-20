@@ -67,6 +67,20 @@ class _POSScreenState extends State<POSScreen> {
   bool _openingPdf = false;
   final _discountController = TextEditingController();
   String _discountType = 'fixed';
+  DateTime _saleDate = DateTime.now();
+  final _descriptionController = TextEditingController();
+
+  String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickSaleDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _saleDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _saleDate = picked);
+  }
 
   Future<void> _searchCustomers(String q) async {
     if (q.trim().isEmpty) {
@@ -272,6 +286,8 @@ class _POSScreenState extends State<POSScreen> {
     try {
       final payload = {
         if (_selectedCustomer != null) 'customer_id': _selectedCustomer!['id'],
+        'invoice_date': _fmt(_saleDate),
+        if (_descriptionController.text.trim().isNotEmpty) 'notes': _descriptionController.text.trim(),
         'items': _cart
             .map((l) => {
                   'product_id': l.productId,
@@ -307,6 +323,8 @@ class _POSScreenState extends State<POSScreen> {
         _customerResults = [];
         _discountController.clear();
         _discountType = 'fixed';
+        _descriptionController.clear();
+        _saleDate = DateTime.now();
       });
       if (mounted) {
         final message = enqueueResult.queued
@@ -343,6 +361,7 @@ class _POSScreenState extends State<POSScreen> {
     _searchController.dispose();
     _customerSearchController.dispose();
     _discountController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -569,6 +588,19 @@ class _POSScreenState extends State<POSScreen> {
                       .map((m) => DropdownMenuItem(value: m.$1, child: Text(m.$2)))
                       .toList(),
                   onChanged: (v) => setState(() => _paymentMethod = v ?? 'cash'),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: _pickSaleDate,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Sale date', border: OutlineInputBorder()),
+                    child: Text(_fmt(_saleDate)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Description (optional)', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 16),
                 GradientButton(
